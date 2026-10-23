@@ -8,10 +8,10 @@ pub fn path_sep() -> char {
     return 92:char
 }
 
-pub fn to_utf16(*s: char) -> nul *u16 {
+pub fn to_utf16(*s: char) -> ?u16 {
     unsafe {
-        auto len = MultiByteToWideChar(65001, 0, *s, -1, null:nul *u16, 0)
-        if len <= 0 { return null:nul *u16 }
+        auto len = MultiByteToWideChar(65001, 0, *s, -1, null:?u16, 0)
+        if len <= 0 { return null:?u16 }
         auto *ptr = libc_malloc((len as usize) * 2).unwrap() as *u16
         MultiByteToWideChar(65001, 0, *s, -1, *ptr, len)
         return *ptr
@@ -20,10 +20,10 @@ pub fn to_utf16(*s: char) -> nul *u16 {
 
 pub fn from_utf16(*w: u16) -> string {
     unsafe {
-        auto len = WideCharToMultiByte(65001, 0, *w, -1, null:nul *char, 0, null:nul *char, 0:Addr)
+        auto len = WideCharToMultiByte(65001, 0, *w, -1, null:?char, 0, null:?char, 0:Addr)
         if len <= 1 { return string::from("") }
         auto *ptr = libc_malloc(len as usize).unwrap() as *char
-        WideCharToMultiByte(65001, 0, *w, -1, *ptr, len, null:nul *char, 0:Addr)
+        WideCharToMultiByte(65001, 0, *w, -1, *ptr, len, null:?char, 0:Addr)
         return string::from_take(*ptr)
     }
 }
@@ -56,7 +56,7 @@ pub fn get_arg_impl(i: i32) -> string {
 
 pub fn getcwd_impl() -> string {
     unsafe {
-        auto len = GetCurrentDirectoryW(0, null:nul *u16)
+        auto len = GetCurrentDirectoryW(0, null:?u16)
         if len == 0 { return string::from("") }
         auto *buf = libc_malloc((len as usize) * 2).unwrap() as *u16
         GetCurrentDirectoryW(len, *buf)
@@ -78,7 +78,7 @@ pub fn chdir_impl(path: Addr) -> bool {
 pub fn getenv_impl(name: string) -> Option<string> {
     unsafe {
         auto *wname = to_utf16(name.c_str()).unwrap()
-        auto len = GetEnvironmentVariableW(*wname, null:nul *u16, 0)
+        auto len = GetEnvironmentVariableW(*wname, null:?u16, 0)
         if len == 0 {
             libc_free(*wname as *void)
             return Option<string>::None
@@ -106,7 +106,7 @@ pub fn setenv_impl(name: string, value: string) -> bool {
 pub fn unsetenv_impl(name: string) -> bool {
     unsafe {
         auto *wname = to_utf16(name.c_str()).unwrap()
-        auto res = SetEnvironmentVariableW(*wname, null:nul *u16)
+        auto res = SetEnvironmentVariableW(*wname, null:?u16)
         libc_free(*wname as *void)
         return res != 0
     }

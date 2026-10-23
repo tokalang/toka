@@ -1,5 +1,5 @@
-fn take_if_present(nul *buffer: [i32]) -> i32 {
-    if *buffer is null {
+fn take_if_present(?buffer: [i32]) -> i32 {
+    if ?buffer is null {
         return 0
     } else {
         return unsafe raw_take buffer[0]
@@ -11,6 +11,6 @@ fn main() -> i32 {
     auto value = take_if_present(*buffer)
     unsafe free [0] *buffer
     if value != 42 { return 1 }
-    if take_if_present(null as nul *[i32]) != 0 { return 2 }
+    if take_if_present(null as ?[i32]) != 0 { return 2 }
     return 0
 }

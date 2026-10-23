@@ -3,13 +3,31 @@
 #include <string>
 #include <utility>
 
-#define TOKA_INTERFACE_FORMAT_VERSION "6"
-#define TOKA_COMPILER_INTERFACE_VERSION "0.9.9-38"
+#define TOKA_INTERFACE_FORMAT_VERSION "7"
+#define TOKA_COMPILER_INTERFACE_VERSION "0.20.0-1"
 #define TOKA_LOCAL_BODY_POLICY "checked-local-v1"
 #define TOKA_PLACE_YIELD_ABI_SCHEMA_VERSION "1"
+#define TOKA_DEFAULT_LANGUAGE_EPOCH "0.20"
 #define TOKA_DEFAULT_ENCAP_EPOCH "0.19"
 
 namespace toka {
+
+inline std::string &mutableActiveLanguageEpoch() {
+  static std::string epoch = TOKA_DEFAULT_LANGUAGE_EPOCH;
+  return epoch;
+}
+
+inline const std::string &getActiveLanguageEpoch() {
+  return mutableActiveLanguageEpoch();
+}
+
+inline bool isValidLanguageEpoch(const std::string &epoch) {
+  return epoch == "0.20";
+}
+
+inline void setActiveLanguageEpoch(std::string epoch) {
+  mutableActiveLanguageEpoch() = std::move(epoch);
+}
 
 inline std::string &mutableActiveEncapEpoch() {
   static std::string epoch = TOKA_DEFAULT_ENCAP_EPOCH;
@@ -21,7 +39,7 @@ inline const std::string &getActiveEncapEpoch() {
 }
 
 inline bool isValidEncapEpoch(const std::string &epoch) {
-  return epoch == "0.18" || epoch == "0.19";
+  return epoch == "0.19";
 }
 
 inline void setActiveEncapEpoch(std::string epoch) {
@@ -30,10 +48,16 @@ inline void setActiveEncapEpoch(std::string epoch) {
 
 inline std::string
 formatReplaySurfaceHashInput(const std::string &declarations,
-                             const std::string &epoch = getActiveEncapEpoch()) {
-  if (epoch.empty() || epoch == "0.18")
-    return declarations;
-  return "// @encap_epoch " + epoch + "\n" + declarations;
+                             const std::string &languageEpoch,
+                             const std::string &encapEpoch = getActiveEncapEpoch()) {
+  return "// @language_epoch " + languageEpoch + "\n// @encap_epoch " +
+         encapEpoch + "\n" + declarations;
+}
+
+inline std::string
+formatReplaySurfaceHashInput(const std::string &declarations) {
+  return formatReplaySurfaceHashInput(declarations, getActiveLanguageEpoch(),
+                                      getActiveEncapEpoch());
 }
 
 } // namespace toka

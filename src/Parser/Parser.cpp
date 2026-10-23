@@ -14,6 +14,7 @@
 #include "toka/Parser.h"
 #include "toka/DiagnosticEngine.h"
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -92,6 +93,7 @@ bool Parser::isTypeStart() const {
   case TokenType::KwDyn:
   case TokenType::KwCede:
   case TokenType::KwNul:
+  case TokenType::TokenNull:
   case TokenType::Ampersand:
   case TokenType::And:
   case TokenType::Star:
@@ -210,8 +212,13 @@ bool Parser::rejectTypeSideHandleMorphology(const Token &nameTok,
       continue;
     }
     if (current->Text == "^" || current->Text == "~" || current->Text == "&" ||
-        current->Text == "*" || current->Text == "&&" || current->Text == "&^" ||
-        current->Text == "&~" || current->Text == "nul" || current->Text == "nul ") {
+        current->Text == "*" || current->Text == "?" || current->Text == "&&" ||
+        current->Text == "&^" || current->Text == "&~" ||
+        current->Text == "nul" || current->Text == "nul " ||
+        (!current->IsPostfix && !current->Text.empty() &&
+         (current->Text.front() == '*' || current->Text.front() == '?' ||
+          current->Text.front() == '^' || current->Text.front() == '~' ||
+          current->Text.front() == '&'))) {
       rootMorphology += current->Text;
     }
     current = current->Subject;
@@ -224,7 +231,8 @@ bool Parser::rejectTypeSideHandleMorphology(const Token &nameTok,
         pos = typeName.find_first_not_of(" \t\r\n", pos + 5);
       }
       if (pos != std::string::npos && (typeName[pos] == '^' || typeName[pos] == '~' ||
-                                      typeName[pos] == '&' || typeName[pos] == '*')) {
+                                      typeName[pos] == '&' || typeName[pos] == '*' ||
+                                      typeName[pos] == '?')) {
         rootMorphology = std::string(1, typeName[pos]);
       }
     }
@@ -268,12 +276,12 @@ bool Parser::rejectTypePermissionPositions(const TypeSyntaxPtr &syntax,
     // Inspect the morphology node's operator, never arbitrary source text.
     const auto &op = syntax->Text;
     const bool marker = op == "#" || op == "$" ||
-        (!op.empty() && (op.front() == '*' || op.front() == '&' || op.front() == '^' || op.front() == '~') &&
+        (!op.empty() && (op.front() == '*' || op.front() == '?' || op.front() == '&' || op.front() == '^' || op.front() == '~') &&
          (op.find('#') != std::string::npos || op.find('$') != std::string::npos));
     if (marker && position != TypeSyntaxPosition::Return &&
         position != TypeSyntaxPosition::ViewPayload &&
         !(position == TypeSyntaxPosition::NonReturn && !syntax->IsPostfix &&
-          !op.empty() && (op.front() == '*' || op.front() == '&' || op.front() == '^' || op.front() == '~'))) {
+          !op.empty() && (op.front() == '*' || op.front() == '?' || op.front() == '&' || op.front() == '^' || op.front() == '~'))) {
       std::string suggestion = "place permissions on the binding name or binding hat, not the type";
       if (binding && syntax->IsPostfix && (op == "#" || op == "$"))
         suggestion = prefix + binding->Text + op + ": " + canonicalType(syntax->Subject);
@@ -293,8 +301,9 @@ bool Parser::rejectTypePermissionPositions(const TypeSyntaxPtr &syntax,
     auto subjectPosition = position;
     if (syntax->NodeKind == K::Morphology && !syntax->IsPostfix &&
         !syntax->Text.empty() &&
-        (syntax->Text.front() == '*' || syntax->Text.front() == '&' ||
-         syntax->Text.front() == '^' || syntax->Text.front() == '~') &&
+        (syntax->Text.front() == '*' || syntax->Text.front() == '?' ||
+         syntax->Text.front() == '&' || syntax->Text.front() == '^' ||
+         syntax->Text.front() == '~') &&
         position != TypeSyntaxPosition::NamedBinding)
       subjectPosition = TypeSyntaxPosition::ViewPayload;
     if (syntax->NodeKind == K::Array || syntax->NodeKind == K::Slice)
@@ -348,10 +357,11 @@ namespace {
 
 std::string canonicalTypeTokenText(const Token &tok) {
   std::string text = tok.Text;
-  if (tok.Kind == TokenType::Star || tok.Kind == TokenType::Ampersand ||
-      tok.Kind == TokenType::Caret || tok.Kind == TokenType::Tilde) {
-    if (tok.IsSwappablePtr) text += "#";
-    if (tok.IsBlocked) text += "$";
+  if (tok.Kind == TokenType::Star || tok.Kind == TokenType::TokenNull ||
+      tok.Kind == TokenType::Ampersand || tok.Kind == TokenType::Caret ||
+      tok.Kind == TokenType::Tilde) {
+    if (tok.IsSwappablePtr && text.find('#') == std::string::npos) text += "#";
+    if (tok.IsBlocked && text.find('$') == std::string::npos) text += "$";
   }
   if (tok.Kind == TokenType::Identifier || tok.Kind == TokenType::KwSelf ||
       tok.Kind == TokenType::KwUpperSelf || tok.Kind == TokenType::KwFn ||
@@ -391,7 +401,8 @@ bool usesVoidOutsideRawPointee(const TypeSyntaxPtr &syntax,
     return usesVoidOutsideRawPointee(
         syntax->Subject,
         syntax->IsPostfix ? rawPointee :
-            (!syntax->Text.empty() && syntax->Text.front() == '*'));
+            (!syntax->Text.empty() &&
+             (syntax->Text.front() == '*' || syntax->Text.front() == '?')));
   case TypeSyntax::Kind::GenericApplication:
     if (usesVoidOutsideRawPointee(syntax->Subject))
       return true;
@@ -494,6 +505,7 @@ private:
     size_t index = 0;
     while (index < Tokens.size() &&
            (Tokens[index].Kind == TokenType::KwNul ||
+            Tokens[index].Kind == TokenType::TokenNull ||
             Tokens[index].Kind == TokenType::Star ||
             Tokens[index].Kind == TokenType::Caret ||
             Tokens[index].Kind == TokenType::Tilde ||
@@ -536,6 +548,8 @@ private:
         prefixes.emplace_back("&", Tokens[Pos - 1].Loc);
         prefixes.emplace_back("&", Tokens[Pos - 1].Loc);
       } else if (match(TokenType::Star)) {
+        prefixes.emplace_back(canonicalTypeTokenText(Tokens[Pos - 1]), Tokens[Pos - 1].Loc);
+      } else if (match(TokenType::TokenNull)) {
         prefixes.emplace_back(canonicalTypeTokenText(Tokens[Pos - 1]), Tokens[Pos - 1].Loc);
       } else if (match(TokenType::Caret)) {
         prefixes.emplace_back(canonicalTypeTokenText(Tokens[Pos - 1]), Tokens[Pos - 1].Loc);
@@ -883,6 +897,7 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
         !tokens.empty() &&
         std::all_of(tokens.begin(), tokens.end(), [](const Token &token) {
           return token.Kind == TokenType::KwNul ||
+                 token.Kind == TokenType::TokenNull ||
                  token.Kind == TokenType::KwCede ||
                  token.Kind == TokenType::Ampersand ||
                  token.Kind == TokenType::And ||
@@ -893,7 +908,8 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
         });
     const bool nextIsTypePrefix =
         check(TokenType::Ampersand) || check(TokenType::And) ||
-        check(TokenType::Star) || check(TokenType::Caret) ||
+        check(TokenType::Star) || check(TokenType::TokenNull) ||
+        check(TokenType::Caret) ||
         check(TokenType::Tilde) || check(TokenType::TokenWrite) ||
         check(TokenType::KwNul) || check(TokenType::KwCede);
     // A leading `*`, `&`, or other morphology token is part of a type (for
@@ -980,15 +996,9 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
     return TypeSyntax::invalid("", peek().Loc, peek().Loc);
 
   for (size_t index = 0; index < tokens.size(); ++index) {
-    if (tokens[index].Kind == TokenType::TokenNull) {
-      HasError = true;
-      DiagnosticEngine::report(
-          tokens[index].Loc,
-          DiagID::ERR_SAFE_NULLABLE_PAYLOAD_REMOVED, "?");
-      continue;
-    }
     if (tokens[index].Kind != TokenType::KwNul)
       continue;
+    bool handledNul = false;
     for (size_t next = index + 1; next < tokens.size(); ++next) {
       if (tokens[next].Kind == TokenType::Caret ||
           tokens[next].Kind == TokenType::Tilde) {
@@ -997,19 +1007,83 @@ TypeSyntaxPtr Parser::parseTypeSyntax(bool allowAssociatedProjection,
             tokens[index].Loc,
             DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED,
             tokens[next].Kind == TokenType::Caret ? "nul ^T" : "nul ~T");
-      }
-      if (tokens[next].Kind == TokenType::Caret ||
-          tokens[next].Kind == TokenType::Tilde ||
-          tokens[next].Kind == TokenType::Star ||
-          tokens[next].Kind == TokenType::Ampersand ||
-          tokens[next].Kind == TokenType::And ||
-          tokens[next].Kind == TokenType::Identifier ||
-          tokens[next].Kind == TokenType::KwUpperSelf)
+        handledNul = true;
         break;
+      }
+      if (tokens[next].Kind == TokenType::Star ||
+          tokens[next].Kind == TokenType::TokenNull) {
+        HasError = true;
+        DiagnosticEngine::report(
+            tokens[index].Loc,
+            DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul *T");
+        handledNul = true;
+        break;
+      }
+      if (tokens[next].Kind == TokenType::Ampersand ||
+          tokens[next].Kind == TokenType::And) {
+        HasError = true;
+        DiagnosticEngine::report(
+            tokens[index].Loc,
+            DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+        handledNul = true;
+        break;
+      }
+      if (tokens[next].Kind == TokenType::Identifier ||
+          tokens[next].Kind == TokenType::KwUpperSelf) {
+        HasError = true;
+        DiagnosticEngine::report(
+            tokens[index].Loc,
+            DiagID::ERR_PARSER_NUL_CAN_ONLY_BE_APPLIED_TO_POINTER_TYPE);
+        handledNul = true;
+        break;
+      }
+    }
+    if (!handledNul) {
+      HasError = true;
+      DiagnosticEngine::report(
+          tokens[index].Loc,
+          DiagID::ERR_PARSER_NUL_CAN_ONLY_BE_APPLIED_TO_POINTER_TYPE);
     }
   }
 
   TypeSyntaxPtr syntax = TypeSyntaxBuilder(tokens).parse();
+  std::function<void(const TypeSyntaxPtr &)> checkPostfixNullablePayload =
+      [&](const TypeSyntaxPtr &node) {
+        if (!node)
+          return;
+        if (node->NodeKind == TypeSyntax::Kind::Morphology &&
+            node->IsPostfix && !node->Text.empty() &&
+            node->Text.front() == '?') {
+          HasError = true;
+          DiagnosticEngine::report(
+              node->End, DiagID::ERR_SAFE_NULLABLE_PAYLOAD_REMOVED, "?");
+        }
+        checkPostfixNullablePayload(node->Subject);
+        checkPostfixNullablePayload(node->Result);
+        for (const auto &elem : node->Elements)
+          checkPostfixNullablePayload(elem);
+        for (const auto &field : node->Fields)
+          checkPostfixNullablePayload(field.Type);
+        for (const auto &arg : node->Arguments) {
+          if (arg.ArgumentKind == TypeArgumentSyntax::Kind::Type)
+            checkPostfixNullablePayload(arg.Type);
+        }
+      };
+  checkPostfixNullablePayload(syntax);
+  if (syntax && syntax->NodeKind == TypeSyntax::Kind::Invalid) {
+    for (size_t index = 1; index < tokens.size(); ++index) {
+      if (tokens[index].Kind == TokenType::TokenNull &&
+          (tokens[index - 1].Kind == TokenType::Identifier ||
+           tokens[index - 1].Kind == TokenType::KwUpperSelf ||
+           tokens[index - 1].Kind == TokenType::Greater ||
+           tokens[index - 1].Kind == TokenType::RBracket ||
+           tokens[index - 1].Kind == TokenType::RParen)) {
+        HasError = true;
+        DiagnosticEngine::report(
+            tokens[index].Loc, DiagID::ERR_SAFE_NULLABLE_PAYLOAD_REMOVED, "?");
+      }
+    }
+  }
   if (position != TypeSyntaxPosition::NamedParameter)
     rejectTypePermissionPositions(syntax, position);
   const bool containsNever = std::any_of(

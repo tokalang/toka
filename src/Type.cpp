@@ -562,10 +562,7 @@ bool PointerType::isCompatibleWith(const Type &target) const {
 std::string RawPointerType::toString() const {
   std::string s = "";
   if (IsCede) s += "cede ";
-  if (IsNullable) {
-    s += "nul ";
-  }
-  s += "*";
+  s += IsNullable ? "?" : "*";
   if (IsWritable)
     s += "#";
   if (IsBlocked)
@@ -577,11 +574,17 @@ bool RawPointerType::isCompatibleWith(const Type &target) const {
   const auto *otherPtr = dynamic_cast<const RawPointerType *>(&target);
   if (!otherPtr)
     return false;
-  // Raw pointers are unsafe; we relax soul mutability checks to allow
-  // easier interfacing with memory management (e.g. malloc/realloc).
   if (!Type::isCompatibleWith(target)) return false;
   if (PointeeType->typeKind == Void || otherPtr->PointeeType->typeKind == Void)
     return true;
+  if ((PointeeType->isPointer() || PointeeType->isReference()) &&
+      (otherPtr->PointeeType->isPointer() ||
+       otherPtr->PointeeType->isReference())) {
+    if (PointeeType->IsNullable != otherPtr->PointeeType->IsNullable)
+      return false;
+    if (otherPtr->PointeeType->IsWritable && !PointeeType->IsWritable)
+      return false;
+  }
   return PointeeType->isCompatibleWith(*otherPtr->PointeeType);
 }
 
@@ -1081,10 +1084,10 @@ std::shared_ptr<Type> ShapeType::substitute(const std::map<std::string, std::sha
     // An unqualified T denotes the complete replacement, not an attribute
     // reset. In particular, default false bits on the placeholder cannot
     // erase nullable/rebind/blocked facts carried by the actual type.
-    auto substituted = !IsWritable && !IsNullable && !IsBlocked
-        ? replacement->withAttributes(replacement->IsWritable,
-                                      replacement->IsNullable, replacement->IsBlocked)
-        : replacement->withAttributes(IsWritable, IsNullable, IsBlocked);
+    auto substituted = replacement->withAttributes(
+        replacement->IsWritable || IsWritable,
+        replacement->IsNullable || IsNullable,
+        replacement->IsBlocked || IsBlocked);
     substituted->IsCede = substituted->IsCede || IsCede;
     if (!VariantSuffix.empty()) {
       if (auto st = std::dynamic_pointer_cast<ShapeType>(substituted)) {
@@ -1264,7 +1267,7 @@ bool isGeneratedCanonicalTypeLeaf(const std::string &name) {
   // contain identifiers only.  Keep this narrow compatibility bridge until
   // template substitution carries semantic Type directly.
   return name.rfind("nul ", 0) == 0 || name.rfind("cede ", 0) == 0 ||
-         name.find_first_of("*^~&<[(") != std::string::npos;
+         name.find_first_of("*?^~&<[(") != std::string::npos;
 }
 
 TypeSyntaxPtr applyTypeSyntaxAttributes(TypeSyntaxPtr syntax, const Type &type,
@@ -1325,7 +1328,8 @@ TypeSyntaxPtr typeSyntaxFromType(const Type &type, SourceLocation begin,
     TypeSyntaxPtr pointee = pointer->PointeeType
                                 ? pointer->PointeeType->toSyntax(begin, end)
                                 : TypeSyntax::named("unknown", begin, end);
-    std::string prefix = "*";
+    std::string prefix =
+        (pointer->typeKind == Type::RawPtr && pointer->IsNullable) ? "?" : "*";
     switch (pointer->typeKind) {
     case Type::UniquePtr:
       prefix = "^";
@@ -1339,15 +1343,11 @@ TypeSyntaxPtr typeSyntaxFromType(const Type &type, SourceLocation begin,
     default:
       break;
     }
-    syntax = TypeSyntax::morphology(prefix, std::move(pointee), begin, end);
-    // Handle attributes are represented as leading morphology so a
-    // source->semantic->source round-trip preserves which layer owns them.
-    if (pointer->typeKind == Type::RawPtr && pointer->IsNullable)
-      syntax = TypeSyntax::morphology("nul", std::move(syntax), begin, end);
     if (pointer->IsWritable)
-      syntax = TypeSyntax::morphology("#", std::move(syntax), begin, end);
+      prefix += "#";
     if (pointer->IsBlocked)
-      syntax = TypeSyntax::morphology("$", std::move(syntax), begin, end);
+      prefix += "$";
+    syntax = TypeSyntax::morphology(prefix, std::move(pointee), begin, end);
     if (pointer->IsCede)
       syntax = TypeSyntax::morphology("cede ", std::move(syntax), begin,
                                       end);
@@ -1591,14 +1591,29 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
       return subject->withAttributes(writable, nullable, blocked);
     };
 
-    if (syntax->Text == "#")
+    if (syntax->Text == "#") {
+      if (!syntax->IsPostfix && subject->isPointer()) {
+        auto result = subject->withAttributes(true, subject->IsNullable,
+                                              subject->IsBlocked);
+        result->IsCede = subject->IsCede;
+        return result;
+      }
       return applyPostfix(true, attributeTarget->IsNullable,
                           attributeTarget->IsBlocked);
-    if (syntax->Text == "?")
+    }
+    if (syntax->IsPostfix && !syntax->Text.empty() &&
+        syntax->Text.front() == '?')
       return std::make_shared<UnresolvedType>(syntax->toCanonicalString());
-    if (syntax->Text == "$")
+    if (syntax->Text == "$") {
+      if (!syntax->IsPostfix && subject->isPointer()) {
+        auto result = subject->withAttributes(subject->IsWritable,
+                                              subject->IsNullable, true);
+        result->IsCede = subject->IsCede;
+        return result;
+      }
       return applyPostfix(attributeTarget->IsWritable,
                           attributeTarget->IsNullable, true);
+    }
     if (syntax->Text == "cede ") {
       auto result = subject->withAttributes(subject->IsWritable,
                                             subject->IsNullable,
@@ -1621,18 +1636,28 @@ std::shared_ptr<Type> Type::fromSyntax(const TypeSyntaxPtr &syntax) {
       return std::make_shared<UnresolvedType>(syntax->toCanonicalString());
     }
 
-    std::shared_ptr<PointerType> pointer;
-    if (syntax->Text == "*")
-      pointer = std::make_shared<RawPointerType>(subject);
-    else if (syntax->Text == "^")
-      pointer = std::make_shared<UniquePointerType>(subject);
-    else if (syntax->Text == "~")
-      pointer = std::make_shared<SharedPointerType>(subject);
-    else if (syntax->Text == "&")
-      pointer = std::make_shared<ReferenceType>(subject);
-    else
-      return std::make_shared<UnresolvedType>(syntax->toCanonicalString());
-    return pointer;
+    if (!syntax->IsPostfix && !syntax->Text.empty()) {
+      char first = syntax->Text.front();
+      bool writable = syntax->Text.find('#') != std::string::npos;
+      bool blocked = syntax->Text.find('$') != std::string::npos;
+      std::shared_ptr<PointerType> pointer;
+      if (first == '*' || first == '?') {
+        pointer = std::make_shared<RawPointerType>(subject);
+        pointer->IsNullable = (first == '?');
+      } else if (first == '^') {
+        pointer = std::make_shared<UniquePointerType>(subject);
+      } else if (first == '~') {
+        pointer = std::make_shared<SharedPointerType>(subject);
+      } else if (first == '&') {
+        pointer = std::make_shared<ReferenceType>(subject);
+      }
+      if (pointer) {
+        pointer->IsWritable = writable;
+        pointer->IsBlocked = blocked;
+        return pointer;
+      }
+    }
+    return std::make_shared<UnresolvedType>(syntax->toCanonicalString());
   }
   }
 
@@ -1861,9 +1886,10 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
   }
 
   char first = s[0];
-  if (first == '*' || first == '^' || first == '~' || first == '&') {
+  if (first == '*' || first == '?' || first == '^' || first == '~' ||
+      first == '&') {
     size_t offset = 1;
-    bool ptrNullable = explicitPtrNullable;
+    bool ptrNullable = explicitPtrNullable || (first == '?');
     bool ptrWritable = false;
     bool ptrBlocked = false;
     while (offset < s.size()) {
@@ -1887,7 +1913,7 @@ std::shared_ptr<Type> Type::fromString(const std::string &rawType) {
     }
 
     std::shared_ptr<PointerType> ptr;
-    if (first == '*')
+    if (first == '*' || first == '?')
       ptr = std::make_shared<RawPointerType>(pointee);
     else if (first == '^')
       ptr = std::make_shared<UniquePointerType>(pointee);
@@ -2383,9 +2409,15 @@ Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
       if (pType && (pType->isPointer() || pType->isReference())) {
         auto inner = pType->getPointeeType();
         if (inner && (inner->isPointer() || inner->isReference())) {
-          return HandleGrammarIssue{
-              HandleGrammarViolation::ParamHandleDepthForbidden, path, 0, 1,
-              pType, pSyntax, ""};
+          auto prof = classifyHandleGrammar(pType);
+          const bool isPureRawChain =
+              prof.continuousRawDepth > 0 && !prof.crossesManagedRawBoundary &&
+              prof.continuousManagedDepth == 0;
+          if (!isPureRawChain) {
+            return HandleGrammarIssue{
+                HandleGrammarViolation::ParamHandleDepthForbidden, path, 0, 1,
+                pType, pSyntax, ""};
+          }
         }
       }
     }
@@ -2407,9 +2439,15 @@ Type::findHandleGrammarIssueRecursive(const std::shared_ptr<Type> &type,
       if (pType && (pType->isPointer() || pType->isReference())) {
         auto inner = pType->getPointeeType();
         if (inner && (inner->isPointer() || inner->isReference())) {
-          return HandleGrammarIssue{
-              HandleGrammarViolation::ParamHandleDepthForbidden, path, 0, 1,
-              pType, nullptr, ""};
+          auto prof = classifyHandleGrammar(pType);
+          const bool isPureRawChain =
+              prof.continuousRawDepth > 0 && !prof.crossesManagedRawBoundary &&
+              prof.continuousManagedDepth == 0;
+          if (!isPureRawChain) {
+            return HandleGrammarIssue{
+                HandleGrammarViolation::ParamHandleDepthForbidden, path, 0, 1,
+                pType, nullptr, ""};
+          }
         }
       }
     }

@@ -1,12 +1,12 @@
 auto drops# = 0:i32
-shape Item(pub nul *marker: i32, pub id: i32)
+shape Item(pub ?marker: i32, pub id: i32)
 impl Item@Encap {
 
     fn drop(self#) { drops += 1 }
 }
 fn main() -> i32 {
     auto *storage# = unsafe alloc [1] Item
-    auto item = Item(*marker = null, id = 7)
+    auto item = Item(?marker = null, id = 7)
     unsafe {
         storage[0] = cede item
         auto taken = raw_take storage[0]

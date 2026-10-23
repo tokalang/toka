@@ -35,9 +35,9 @@ impl Outer@Encap {
 
 // This test container maintains the live prefix itself. These helpers take
 // from initialized raw slots; raw_take does not infer that fact from alloc.
-fn raw_store_move_prefix<T>(nul *source: [T], *destination#: [T], length: usize) {
+fn raw_store_move_prefix<T>(?source: [T], *destination#: [T], length: usize) {
     if length == 0:usize { return }
-    if *source is null {
+    if ?source is null {
         unsafe { libc_abort() }
         unreachable
     } else {
@@ -49,9 +49,9 @@ fn raw_store_move_prefix<T>(nul *source: [T], *destination#: [T], length: usize)
     }
 }
 
-fn raw_store_pop_tail<T>(nul *storage: [T], length#: usize) -> Option<T> {
+fn raw_store_pop_tail<T>(?storage: [T], length#: usize) -> Option<T> {
     if length == 0:usize { return Option<T>::None }
-    if *storage is null {
+    if ?storage is null {
         unsafe { libc_abort() }
         unreachable
     } else {
@@ -63,7 +63,7 @@ fn raw_store_pop_tail<T>(nul *storage: [T], length#: usize) -> Option<T> {
 }
 
 shape RawStore<T> (
-    nul *#buf#: [T] = null as nul *[T],
+    ?#buf#: [T] = null as ?[T],
     len#: usize = 0:usize,
     cap#: usize = 0:usize
 )
@@ -71,9 +71,9 @@ shape RawStore<T> (
 impl<T> RawStore<T>@Encap {
     fn drop(self#) {
         unsafe {
-            if self.*buf != null {
-                unsafe free [self.len] self.*#buf
-                self.*buf = null as nul *[T]
+            if self.?buf != null {
+                unsafe free [self.len] self.?#buf
+                self.?buf = null as ?[T]
             }
             self.len = 0:usize
             self.cap = 0:usize
@@ -84,7 +84,7 @@ impl<T> RawStore<T>@Encap {
 
 impl<T> RawStore<T> {
     fn new() -> RawStore<T> {
-        return RawStore<T>(*buf = null as nul *[T], len = 0:usize, cap = 0:usize)
+        return RawStore<T>(?buf = null as ?[T], len = 0:usize, cap = 0:usize)
     }
 
     fn grow(self#) {
@@ -92,9 +92,9 @@ impl<T> RawStore<T> {
             auto next_cap# = self.cap * 2:usize
             if next_cap == 0:usize { next_cap = 2:usize }
             auto *next# = unsafe alloc [next_cap] T
-            raw_store_move_prefix<T>(self.*buf, *next, self.len)
-            if self.*buf != null { unsafe free [0] self.*#buf }
-            self.*buf = *next
+            raw_store_move_prefix<T>(self.?buf, *next, self.len)
+            if self.?buf != null { unsafe free [0] self.?#buf }
+            self.?buf = *next
             self.cap = next_cap
         }
     }
@@ -102,14 +102,16 @@ impl<T> RawStore<T> {
     fn push(self#, cede value: T) {
         if self.len == self.cap { self#.grow() }
         unsafe {
-            self.buf[self.len] = cede value
-            self.len += 1:usize
+            if self.?buf != null {
+                self.buf[self.len] = cede value
+                self.len += 1:usize
+            }
         }
     }
 
     fn pop(self#) -> Option<T> {
         if self.len == 0:usize { return Option<T>::None }
-        auto outcome = raw_store_pop_tail<T>(self.*buf, self.len#)
+        auto outcome = raw_store_pop_tail<T>(self.?buf, self.len#)
         return cede outcome
     }
 }

@@ -348,12 +348,29 @@ bool Sema::validateParameterHandleChain(
   if (permission.HandleLayers.size() <= 1)
     return true;
 
+  bool allRawLayers = !permission.HandleLayers.empty();
+  for (const auto &layer : permission.HandleLayers) {
+    if (layer.Morphology != BindingMorphology::Raw) {
+      allRawLayers = false;
+      break;
+    }
+  }
+  if (allRawLayers) {
+    if (!physicalType)
+      return true;
+    auto prof = toka::Type::classifyHandleGrammar(physicalType);
+    if (prof.continuousRawDepth > 0 && !prof.crossesManagedRawBoundary &&
+        prof.continuousManagedDepth == 0) {
+      return true;
+    }
+  }
+
   std::string rootChain;
   for (const auto &layer : permission.HandleLayers) {
-    if (layer.Nullable)
-      rootChain += "nul ";
     switch (layer.Morphology) {
-    case BindingMorphology::Raw: rootChain += "*"; break;
+    case BindingMorphology::Raw:
+      rootChain += layer.Nullable ? "?" : "*";
+      break;
     case BindingMorphology::Unique: rootChain += "^"; break;
     case BindingMorphology::Shared: rootChain += "~"; break;
     case BindingMorphology::Reference: rootChain += "&"; break;
@@ -363,10 +380,10 @@ bool Sema::validateParameterHandleChain(
 
   const auto &kept = permission.HandleLayers.back();
   std::string suggestedMorph;
-  if (kept.Nullable)
-    suggestedMorph += "nul ";
   switch (kept.Morphology) {
-  case BindingMorphology::Raw: suggestedMorph += "*"; break;
+  case BindingMorphology::Raw:
+    suggestedMorph += kept.Nullable ? "?" : "*";
+    break;
   case BindingMorphology::Unique: suggestedMorph += "^"; break;
   case BindingMorphology::Shared: suggestedMorph += "~"; break;
   case BindingMorphology::Reference: suggestedMorph += "&"; break;
@@ -756,7 +773,9 @@ std::shared_ptr<toka::Type> Sema::resolveType(std::shared_ptr<toka::Type> type,
           if (!resolved)
             return type;
           auto attributed = resolved->withAttributes(
-              type->IsWritable, type->IsNullable, type->IsBlocked);
+              resolved->IsWritable || type->IsWritable,
+              resolved->IsNullable || type->IsNullable,
+              resolved->IsBlocked || type->IsBlocked);
           attributed->IsCede = attributed->IsCede || type->IsCede;
           return attributed;
         }
@@ -1630,6 +1649,19 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
       if (targetPtr->typeKind != toka::Type::RawPtr &&
           (targetPtr->IsNullable || sourcePtr->IsNullable))
         return false;
+      auto tInner = targetPtr->getPointeeType();
+      auto sInner = sourcePtr->getPointeeType();
+      while (tInner && sInner &&
+             (tInner->isPointer() || tInner->isReference()) &&
+             (sInner->isPointer() || sInner->isReference())) {
+        if (tInner->typeKind != sInner->typeKind ||
+            tInner->IsNullable != sInner->IsNullable ||
+            (tInner->IsWritable && !sInner->IsWritable)) {
+          return false;
+        }
+        tInner = tInner->getPointeeType();
+        sInner = sInner->getPointeeType();
+      }
       // Rule 2: Pointee Types must be compatible
       if (isTypeCompatible(targetPtr->getPointeeType(),
                            sourcePtr->getPointeeType())) {
@@ -1703,11 +1735,11 @@ bool Sema::isTypeCompatible(std::shared_ptr<toka::Type> Target,
 
   // 6. Physical null compatibility is raw-pointer-specific.
   if (S->isNullType()) {
-    if (T->isRawPointer() && (T->IsNullable || m_InUnsafeContext))
+    if (T->isRawPointer() && T->IsNullable)
       return true;
   }
   if (T->isNullType()) {
-    if (S->isRawPointer() && (S->IsNullable || m_InUnsafeContext))
+    if (S->isRawPointer() && S->IsNullable)
       return true;
   }
 

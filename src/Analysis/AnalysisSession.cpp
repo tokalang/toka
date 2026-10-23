@@ -113,7 +113,10 @@ AnalysisResult AnalysisSession::analyze(const std::string &rootPath) {
   std::vector<std::unique_ptr<Module>> parsedModules;
   if (ToolchainNodeId.empty())
     ToolchainNodeId =
-        std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION;
+        std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION +
+        "-fmt" + TOKA_INTERFACE_FORMAT_VERSION +
+        "-lang" + getActiveLanguageEpoch() +
+        "-encap" + getActiveEncapEpoch();
   ModuleResolver resolver(*Sources, SearchPaths, PackageMap, true,
                           TrustedSystemRoots, {}, "", "", ToolchainNodeId);
   resolver.setSourceOverrides(Overlays);

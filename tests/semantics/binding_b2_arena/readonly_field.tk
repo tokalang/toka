@@ -1,6 +1,6 @@
 shape Node(offset#: usize)
-shape Holder(nul *#next: Node)
+shape Holder(?#next: Node)
 fn blocked(holder#: Holder) {
-    auto nul *cursor# = holder.*next
+    auto ?cursor# = holder.?next
 }
 fn main() -> i32 { return 0 }

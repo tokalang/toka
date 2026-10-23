@@ -353,17 +353,51 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
             arg.IsUnique = arg.ResolvedType->isUniquePtr();
             arg.IsShared = arg.ResolvedType->isSharedPtr();
             arg.IsReference = arg.ResolvedType->isReference();
-            arg.IsValueMutable = arg.ResolvedType->IsWritable;
-            arg.Permission = BindingPermission::fromLegacy(
-                arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
-                false, arg.ResolvedType->IsNullable, false,
-                arg.IsValueMutable, false, arg.ResolvedType->IsBlocked);
+            arg.Permission.HandleLayers.clear();
+            auto cur = arg.ResolvedType;
+            bool firstLayer = true;
+            while (cur && (cur->isPointer() || cur->isSmartPointer() ||
+                           cur->isReference())) {
+              BindingMorphology m = BindingMorphology::None;
+              if (cur->isRawPointer()) m = BindingMorphology::Raw;
+              else if (cur->isUniquePtr()) m = BindingMorphology::Unique;
+              else if (cur->isSharedPtr()) m = BindingMorphology::Shared;
+              else if (cur->isReference()) m = BindingMorphology::Reference;
+              arg.Permission.HandleLayers.push_back(
+                  {m, firstLayer ? false : cur->IsWritable, cur->IsNullable,
+                   cur->IsBlocked});
+              firstLayer = false;
+              cur = cur->getPointeeType();
+            }
+            arg.IsValueMutable = cur ? cur->IsWritable : arg.ResolvedType->IsWritable;
+            arg.Permission.SoulWritable = arg.IsValueMutable;
+            arg.Permission.SoulBlocked = cur ? cur->IsBlocked : arg.ResolvedType->IsBlocked;
+            arg.Permission.syncProjections();
           }
           if (i < Clo->Params.size()) {
-            arg.Permission = Clo->Params[i].Permission;
+            if (!Clo->Params[i].Permission.HandleLayers.empty()) {
+              arg.Permission = Clo->Params[i].Permission;
+              arg.Permission.syncProjections();
+              arg.IsRawPointer = arg.Permission.Morphology == BindingMorphology::Raw;
+              arg.IsUnique = arg.Permission.Morphology == BindingMorphology::Unique;
+              arg.IsShared = arg.Permission.Morphology == BindingMorphology::Shared;
+              arg.IsReference = arg.Permission.Morphology == BindingMorphology::Reference;
+              arg.IsPointerNullable = arg.Permission.IdentityMayBeZero;
+              arg.IsRebindable = arg.Permission.IdentityRebindable;
+              arg.IsRebindBlocked = arg.Permission.IdentityBlocked;
+              if (arg.ResolvedType)
+                arg.Type = arg.ResolvedType->getSoulName();
+              arg.ResolvedType = Sema::synthesizePhysicalTypeObject(arg, false);
+              if (arg.ResolvedType)
+                arg.Type = arg.ResolvedType->toString();
+            } else {
+              arg.Permission.SoulWritable = Clo->Params[i].Permission.SoulWritable;
+              arg.Permission.SoulBlocked = Clo->Params[i].Permission.SoulBlocked;
+            }
             // Receiver mode on an injected callable type is not binding
             // permission. Preserve the actual parameter spelling (p#).
             arg.IsValueMutable = arg.Permission.SoulWritable;
+            arg.IsValueBlocked = arg.Permission.SoulBlocked;
             arg.Loc = Clo->Params[i].Loc;
             arg.HadRejectedTypeSideMorphology = Clo->Params[i].HadRejectedTypeSideMorphology;
           }
@@ -390,11 +424,26 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
             arg.IsUnique = arg.ResolvedType->isUniquePtr();
             arg.IsShared = arg.ResolvedType->isSharedPtr();
             arg.IsReference = arg.ResolvedType->isReference();
-            arg.IsValueMutable = arg.ResolvedType->IsWritable;
-            arg.Permission = BindingPermission::fromLegacy(
-                arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
-                false, arg.ResolvedType->IsNullable, false,
-                arg.IsValueMutable, false, arg.ResolvedType->IsBlocked);
+            arg.Permission.HandleLayers.clear();
+            auto cur = arg.ResolvedType;
+            bool firstLayer = true;
+            while (cur && (cur->isPointer() || cur->isSmartPointer() ||
+                           cur->isReference())) {
+              BindingMorphology m = BindingMorphology::None;
+              if (cur->isRawPointer()) m = BindingMorphology::Raw;
+              else if (cur->isUniquePtr()) m = BindingMorphology::Unique;
+              else if (cur->isSharedPtr()) m = BindingMorphology::Shared;
+              else if (cur->isReference()) m = BindingMorphology::Reference;
+              arg.Permission.HandleLayers.push_back(
+                  {m, firstLayer ? false : cur->IsWritable, cur->IsNullable,
+                   cur->IsBlocked});
+              firstLayer = false;
+              cur = cur->getPointeeType();
+            }
+            arg.IsValueMutable = cur ? cur->IsWritable : arg.ResolvedType->IsWritable;
+            arg.Permission.SoulWritable = arg.IsValueMutable;
+            arg.Permission.SoulBlocked = cur ? cur->IsBlocked : arg.ResolvedType->IsBlocked;
+            arg.Permission.syncProjections();
           }
           closureParams.push_back(std::move(arg));
       }

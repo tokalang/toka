@@ -29,7 +29,7 @@ DIAG(ERR_ESCAPE_UNSET,            Error,   "E0411", "Cannot escape an uninitiali
 DIAG(ERR_DIRTY_REF_ESCAPE,        Error,   "E0412", "Reference '{}' to uninitialized variable '{}' escapes scope without initialization")
 DIAG(ERR_INVALID_OP,              Error,   "E0413", "Invalid operands for operation '{}': '{}' and '{}'")
 DIAG(ERR_TYPE_REQUIRED,           Error,   "E0414", "Type annotation required for variable '{}'")
-DIAG(ERR_INFER_NULLPTR,           Error,   "E0415", "Cannot infer type from 'null'; use an RHS type ascription (e.g., 'auto *p = null:*Type')")
+DIAG(ERR_INFER_NULLPTR,           Error,   "E0415", "Cannot infer type from 'null'; use an RHS type ascription (e.g., 'auto ?p = null:?Type')")
 DIAG(ERR_IMPLICIT_BOX_PROHIBITED, Error,   "E0459", "Implicit heap-boxing via pointer initialization is prohibited. Use explicit allocation like 'new {}(...)' stringently")
 
 // --- Sema: Shape & Structs ---
@@ -354,11 +354,12 @@ DIAG(ERR_MORPHOLOGY_BOUND_UNSATISFIED, Error, "E0621", "Type '{}' does not satis
 DIAG(ERR_MORPHOLOGY_BOUND_REQUIRES_MORPHIC, Error, "E0622", "Morphology bound '{}' requires morphic generic parameter {}")
 DIAG(ERR_UNSAFE_CALL_REQUIRES_CONTEXT, Error, "E0623", "Call to unsafe function '{}' requires an unsafe context")
 DIAG(ERR_UNSAFE_TRAIT_METHOD_UNSUPPORTED, Error, "E0624", "Unsafe trait methods are not supported")
-DIAG(ERR_NONZERO_RAW_NULL_FLOW, Error, "E0483", "Plain raw pointer type '{}' cannot contain or test null; use 'nul *T' for a may-zero raw address")
+DIAG(ERR_NONZERO_RAW_NULL_FLOW, Error, "E0483", "Plain raw pointer type '{}' cannot contain or test null; use '?T' for a may-zero raw address")
 DIAG(ERR_SAFE_NULLABLE_PAYLOAD_REMOVED, Error, "E0484", "Safe nullable payload syntax '{}' has been removed; use Init, 'T | miss', Option<T>, or an explicit domain state")
-DIAG(ERR_SAFE_NULLABLE_HANDLE_REMOVED, Error, "E0485", "Safe nullable handle syntax '{}' has been removed; '^T' and '~T' must designate valid objects, while physical null requires 'nul *T'")
+DIAG(ERR_SAFE_NULLABLE_HANDLE_REMOVED, Error, "E0485", "Safe nullable handle syntax '{}' has been removed; '^T' and '~T' must designate valid objects, while physical null requires '?T'")
 DIAG(ERR_NONE_LITERAL_REMOVED, Error, "E0486", "The 'none' payload literal has been removed; use miss, Option::None, Init, or an explicit domain state")
 DIAG(ERR_NULLABLE_ASSERTION_REMOVED, Error, "E0487", "Nullable postfix/assertion syntax has been removed; use raw-pointer unwrap(), match 'T | miss', Option methods, or explicit state handling")
+DIAG(ERR_LEGACY_NUL_RAW_REMOVED, Error, "E0488", "Legacy nullable raw pointer syntax '{}' has been removed in 0.20; use '?T' or '?p' instead of 'nul *T' or 'nul *p'")
 DIAG(ERR_SEMA_MORPHOLOGY_SYMBOLS_CANNOT_PREFIX_A_MEMBER, Error, "E04476", "Morphology symbols (^, *, ~) cannot prefix a member access expression. To get the pointer handle of a member, the sigil must be placed directly before the member name (e.g., use 'm.~a' instead of '~m.a')")
 DIAG(ERR_SEMA_MORPHOLOGY_SYMBOLS_ARE_ONLY_ALLOWED_AT_TH, Error, "E04477", "Morphology symbols (^, *, ~, &) are only allowed at the terminal of an access chain")
 DIAG(ERR_SEMA_PERMISSION_SYMBOLS_ARE_ONLY_ALLOWED_AT_TH, Error, "E04478", "Permission symbols (#, ?) are only allowed at the terminal of an access chain")

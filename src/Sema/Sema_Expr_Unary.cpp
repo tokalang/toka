@@ -66,6 +66,199 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
     }
   }
 
+  if (Unary->Op == TokenType::Star) {
+    std::vector<UnaryExpr *> starChain;
+    Expr *curExpr = Unary;
+    while (auto *u = dynamic_cast<UnaryExpr *>(curExpr)) {
+      if (u->Op != TokenType::Star)
+        break;
+      starChain.push_back(u);
+      curExpr = u->RHS.get();
+    }
+    if (auto *Var = dynamic_cast<VariableExpr *>(curExpr)) {
+      bool savedDisable = m_DisableSoulCollapse;
+      m_DisableSoulCollapse = true;
+      auto varType = checkExpr(Var);
+      m_DisableSoulCollapse = savedDisable;
+      if (!varType || varType->isUnknown())
+        return toka::Type::fromString("unknown");
+      if (Var->IsAbstractWholeValue) {
+        error(Unary, DiagID::ERR_GENERIC_SEMA,
+              "a concrete handle selector requires a declared root morphology; opaque T denotes the whole value");
+        return toka::Type::fromString("unknown");
+      }
+      if (Unary->NativeSyncManagedSlotTarget && m_InLHS) {
+        auto element = queryNativeSyncManagedSlotTarget(Unary);
+        if (element)
+          return element;
+        error(Unary, DiagID::ERR_GENERIC_SEMA,
+              "native sync replacement: ManagedSlotTargetMismatch");
+        return toka::Type::fromString("unknown");
+      }
+      for (auto *u : starChain) {
+        recordHandleSurfaceUnaryExpr(*u, true);
+      }
+      SymbolInfo *Info = nullptr;
+      std::string actualName = Var->Name;
+      if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName) &&
+          Info) {
+        Info->HasHandleBeenUsed = true;
+        if (m_InLHS || m_IsAssignmentTarget) {
+          Info->HasBeenUsed = true;
+        }
+        std::shared_ptr<toka::Type> physType = Info->TypeObj;
+        bool handleViewWritable =
+            m_InLHS ? Info->IsHandleRebindable()
+                    : (Unary->IsRebindable ||
+                       (m_IsAssignmentTarget && Info->IsHandleRebindable()));
+        std::vector<std::shared_ptr<toka::RawPointerType>> declaredRawLayers;
+        std::shared_ptr<toka::Type> rawSoul = physType;
+        while (rawSoul && rawSoul->isRawPointer()) {
+          declaredRawLayers.push_back(
+              std::static_pointer_cast<toka::RawPointerType>(rawSoul));
+          rawSoul = rawSoul->getPointeeType();
+        }
+        const size_t D = declaredRawLayers.size();
+        const size_t K = starChain.size();
+        auto buildProvidedHats = [&]() {
+          std::string s;
+          for (auto *u : starChain)
+            s += u->HasNull ? "?" : "*";
+          return s;
+        };
+        auto buildExpectedHats = [&]() {
+          std::string s;
+          for (const auto &l : declaredRawLayers)
+            s += l->IsNullable ? "?" : "*";
+          return s;
+        };
+        if (D == 0) {
+          if (K != 1 || Unary->HasNull) {
+            error(Unary, DiagID::ERR_MORPHOLOGY_MISMATCH, "*",
+                  buildProvidedHats());
+          }
+          Unary->SelectsHandleIdentity = false;
+          if (physType && physType->isArray()) {
+            auto arr = std::dynamic_pointer_cast<toka::ArrayType>(physType);
+            auto res = std::make_shared<toka::RawPointerType>(arr->ElementType);
+            res->IsWritable = Unary->IsRebindable;
+            res->IsNullable = Unary->HasNull;
+            return res;
+          }
+          if (physType && (physType->isSharedPtr() || physType->isUniquePtr() ||
+                           physType->isReference())) {
+            auto res = std::make_shared<toka::RawPointerType>(
+                physType->getPointeeType());
+            res->IsWritable = handleViewWritable;
+            res->IsNullable = Unary->HasNull;
+            return res;
+          }
+          if (varType && varType->IsWritable) {
+            m_MutableAliasedPaths.insert(actualName);
+          }
+          auto res = std::make_shared<toka::RawPointerType>(varType);
+          res->IsWritable = handleViewWritable;
+          res->IsNullable = Unary->HasNull;
+          return res;
+        }
+        if (K == D) {
+          bool hatMismatch = false;
+          for (size_t i = 0; i < D; ++i) {
+            if (starChain[i]->HasNull != declaredRawLayers[i]->IsNullable) {
+              hatMismatch = true;
+              break;
+            }
+          }
+          if (hatMismatch) {
+            error(Unary, DiagID::ERR_MORPHOLOGY_MISMATCH, buildExpectedHats(),
+                  buildProvidedHats());
+          }
+          for (size_t i = 1; i < D; ++i) {
+            if (!m_InLHS && starChain[i]->IsRebindable &&
+                !declaredRawLayers[i]->IsWritable) {
+              error(starChain[i],
+                    DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+            }
+          }
+          std::shared_ptr<toka::Type> cur = rawSoul;
+          for (size_t idx = D; idx > 0; --idx) {
+            size_t i = idx - 1;
+            starChain[i]->SelectsHandleIdentity = true;
+            auto layer = std::make_shared<toka::RawPointerType>(cur);
+            layer->IsBlocked = declaredRawLayers[i]->IsBlocked;
+            if (i == 0) {
+              bool outerNullable =
+                  declaredRawLayers[0]->IsNullable &&
+                  !(hasActiveNonZeroFact(actualName) && !m_InLHS &&
+                    !m_IsAssignmentTarget && !starChain[0]->IsRebindable);
+              layer->IsNullable = outerNullable;
+              layer->IsWritable = handleViewWritable;
+            } else {
+              layer->IsNullable = declaredRawLayers[i]->IsNullable;
+              layer->IsWritable = declaredRawLayers[i]->IsWritable;
+            }
+            starChain[i]->ResolvedType = layer;
+            cur = layer;
+          }
+          return cur;
+        }
+        if (K == D + 1) {
+          bool hatMismatch = starChain[0]->HasNull;
+          for (size_t i = 0; i < D && !hatMismatch; ++i) {
+            if (starChain[i + 1]->HasNull != declaredRawLayers[i]->IsNullable) {
+              hatMismatch = true;
+            }
+          }
+          if (hatMismatch) {
+            error(Unary, DiagID::ERR_MORPHOLOGY_MISMATCH,
+                  "*" + buildExpectedHats(), buildProvidedHats());
+          }
+          if (!m_InLHS && starChain[1]->IsRebindable &&
+              !Info->IsHandleRebindable()) {
+            error(starChain[1],
+                  DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+          }
+          for (size_t i = 1; i < D; ++i) {
+            if (!m_InLHS && starChain[i + 1]->IsRebindable &&
+                !declaredRawLayers[i]->IsWritable) {
+              error(starChain[i + 1],
+                    DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+            }
+          }
+          if (Info->IsHandleRebindable()) {
+            m_MutableAliasedPaths.insert(actualName);
+          }
+          std::shared_ptr<toka::Type> cur = rawSoul;
+          for (size_t idx = D; idx > 0; --idx) {
+            size_t i = idx - 1;
+            starChain[i + 1]->SelectsHandleIdentity = true;
+            auto layer = std::make_shared<toka::RawPointerType>(cur);
+            layer->IsBlocked = declaredRawLayers[i]->IsBlocked;
+            layer->IsNullable = declaredRawLayers[i]->IsNullable;
+            if (i == 0) {
+              layer->IsWritable =
+                  starChain[1]->IsRebindable && Info->IsHandleRebindable();
+            } else {
+              layer->IsWritable = declaredRawLayers[i]->IsWritable;
+            }
+            starChain[i + 1]->ResolvedType = layer;
+            cur = layer;
+          }
+          starChain[0]->SelectsHandleIdentity = false;
+          auto addrLayer = std::make_shared<toka::RawPointerType>(cur);
+          addrLayer->IsNullable = false;
+          addrLayer->IsWritable = starChain[0]->IsRebindable;
+          starChain[0]->ResolvedType = addrLayer;
+          return addrLayer;
+        }
+        error(Unary, DiagID::ERR_MORPHOLOGY_MISMATCH, buildExpectedHats(),
+              buildProvidedHats());
+        return physType->withAttributes(handleViewWritable,
+                                        declaredRawLayers[0]->IsNullable);
+      }
+    }
+  }
+
   // Handle-selection hats must see the identity. A bare operand under `&`
   // intentionally keeps ordinary soul collapse: `&u` borrows the payload
   // selected by `u`, while `&^u` first selects `^u` and therefore borrows the
@@ -139,7 +332,9 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
   }
 
   if (Unary->Op == TokenType::Bang) {
-    if (!rhsType->isBoolean()) {
+    if (isUnnarrowedBareNullableRawExpr(Unary->RHS.get())) {
+      error(Unary->RHS.get(), DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+    } else if (!rhsType->isBoolean()) {
       error(Unary, DiagID::ERR_SEMA_OPERAND_OF_MUST_BE_BOOL_GOT, rhsInfo);
     }
     return toka::Type::fromString("bool");
@@ -229,6 +424,8 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
         if (!m_InLHS && !m_BorrowingSelectedHandle) {
           std::string pathToBorrow = getPathString(Unary->RHS.get());
           if (!pathToBorrow.empty()) {
+             if (isExclusive || soulMutable || handleMutable)
+               m_MutableAliasedPaths.insert(pathToBorrow);
              AccessPath sourcePath = makeAccessPath(Unary->RHS.get());
              AccessPath canonicalSourcePath =
                  canonicalizeAccessPath(sourcePath);

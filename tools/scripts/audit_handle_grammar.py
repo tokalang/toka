@@ -141,7 +141,6 @@ def run_quick_scan(tokac_bin, build_dir, run_dir, scratch_dir, jobs=8):
             "tests/fail/handle_grammar_param_level2_unique.tk",
             "tests/fail/handle_grammar_param_level2_shared.tk",
             "tests/fail/handle_grammar_param_level2_ref.tk",
-            "tests/fail/handle_grammar_param_level2_raw.tk",
             "tests/fail/handle_grammar_param_level2_nul_raw.tk",
             "tests/fail/handle_grammar_param_closure_illegal.tk",
             "tests/fail/handle_grammar_array_element_illegal.tk",

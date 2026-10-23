@@ -55,14 +55,14 @@ pub fn chdir_impl(path: Addr) -> bool {
 pub fn getenv_impl(name: string) -> Option<string> {
     unsafe {
         // libc_getenv returns *char (Borrowed)
-        auto nul *val = libc_getenv(name.c_str())
+        auto ?val = libc_getenv(name.c_str())
         
-        if *val == null {
+        if ?val == null {
             return Option<string>::None
         }
         
         // Copy from borrowed pointer
-        return Option<string>::Some(string::from_cstr(*val))
+        return Option<string>::Some(string::from_cstr(?val))
     }
 }
 

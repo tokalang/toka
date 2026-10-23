@@ -1,5 +1,5 @@
-error[E0495]: Parameter 'x' cannot use root handle chain 'nul **'; formal parameter roots are limited to one handle layer (did you mean '*x: i32'?)
- --> tests/fail/handle_grammar_param_level2_nul_raw.tk:1:14
+error[E0488]: Legacy nullable raw pointer syntax 'nul *' has been removed in 0.20; use '?T' or '?p' instead of 'nul *T' or 'nul *p'
+ --> tests/fail/handle_grammar_param_level2_nul_raw.tk:1:12
    |
  1 | fn bad(nul **x: i32) -> i32 {
-   |              ^
+   |            ^

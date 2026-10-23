@@ -9,8 +9,8 @@ import sys/libc::{libc_printf, libc_fflush, libc_abort}
 // in a slot selected by occupied metadata, including the pending value after
 // its key has been taken. Retirement does not prove initialization or release
 // the other element. Both takes must complete before user operations resume.
-fn hashmap_take_raw_element<T>(nul *storage: [T], index: usize, marker#: u8) -> T {
-    if *storage is null {
+fn hashmap_take_raw_element<T>(?storage: [T], index: usize, marker#: u8) -> T {
+    if ?storage is null {
         unsafe { libc_abort() }
         unreachable
     } else {

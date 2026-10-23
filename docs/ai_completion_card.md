@@ -14,7 +14,7 @@ and runtime check.
 ## Binding and mutation
 
 Toka separates a payload (`x`) from a handle/access representation (`&x`,
-`*x`, `^x`, `~x`). Do not add a handle sigil merely because a payload must
+`*x`, `?x`, `^x`, `~x`). Do not add a handle sigil merely because a payload must
 mutate.
 
 Declare a payload that may be written with `#`, then use the plain name for an
@@ -258,6 +258,7 @@ return write_string_atomic(path.clone(), label.as_str())
 | Cede obligation incomplete | Forward, store, consume, or `return cede value` on every required path |
 | Moved `Result` / `Option` | Prefer `guard auto ... else` for early exit, or `match` for two-way handling; `unwrap()` consumes whole-value ownership |
 | `u32` versus `char` comparison | Iterate the byte view and compare integer codes 48 through 57, not `'0'` |
+| Legacy `nul *` or nullable raw pointer | Use `?T` / `?p` (`?#p` for rebindable, `self.?next` for member handle, `guard ?p { ... }` for 1-layer narrowing) |
 
 Before broad rewrites, preserve already-correct ownership and authority markers
 while repairing the reported site. Compiler diagnostics are authoritative for

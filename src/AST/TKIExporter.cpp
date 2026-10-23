@@ -83,20 +83,20 @@ static std::string reconstructVarFromPermission(
 
     if (!permission.HandleLayers.empty()) {
         for (const auto &layer : permission.HandleLayers) {
-            if (layer.Nullable) {
-                result += "nul ";
-            }
             switch (layer.Morphology) {
             case BindingMorphology::Raw:
-                result += "*";
+                result += layer.Nullable ? "?" : "*";
                 break;
             case BindingMorphology::Unique:
+                if (layer.Nullable) result += "nul ";
                 result += "^";
                 break;
             case BindingMorphology::Shared:
+                if (layer.Nullable) result += "nul ";
                 result += "~";
                 break;
             case BindingMorphology::Reference:
+                if (layer.Nullable) result += "nul ";
                 result += "&";
                 break;
             case BindingMorphology::None:
@@ -109,21 +109,21 @@ static std::string reconstructVarFromPermission(
             }
         }
     } else {
-        if (permission.IdentityMayBeZero) {
-            result += "nul ";
-        }
         switch (permission.Morphology) {
         case BindingMorphology::Unique:
+            if (permission.IdentityMayBeZero) result += "nul ";
             result += "^";
             break;
         case BindingMorphology::Shared:
+            if (permission.IdentityMayBeZero) result += "nul ";
             result += "~";
             break;
         case BindingMorphology::Reference:
+            if (permission.IdentityMayBeZero) result += "nul ";
             result += "&";
             break;
         case BindingMorphology::Raw:
-            result += "*";
+            result += permission.IdentityMayBeZero ? "?" : "*";
             break;
         case BindingMorphology::None:
             break;
@@ -147,6 +147,28 @@ static std::string reconstructVarFromPermission(
     }
 
     return result;
+}
+
+static BindingPermission normalizeExportPermission(
+    const BindingPermission &perm,
+    bool hasPointer, bool isUnique, bool isShared, bool isReference,
+    bool isPointerNullable, bool isRebindable, bool isRebindBlocked,
+    bool isMorphicExempt, bool isValueMutable, bool isValueNullable,
+    bool isValueBlocked
+) {
+    if (!perm.HandleLayers.empty() || perm.Morphology != BindingMorphology::None ||
+        perm.SoulWritable || perm.SoulBlocked || perm.MorphicExempt) {
+        BindingPermission out = perm;
+        out.SoulWritable = out.SoulWritable || isValueMutable;
+        out.SoulBlocked = out.SoulBlocked || isValueBlocked;
+        return out;
+    }
+    return BindingPermission::fromLegacy(
+        hasPointer, isUnique, isShared, isReference,
+        isRebindable, isPointerNullable, isRebindBlocked,
+        isValueMutable, isValueNullable, isValueBlocked,
+        isMorphicExempt
+    );
 }
 
 static std::string reconstructVar(
@@ -225,7 +247,7 @@ static std::string takePatternMorphologyPrefix(std::string &name) {
     }
     if (!name.empty()) {
         char c = name[0];
-        if (c == '&' || c == '^' || c == '~' || c == '*') {
+        if (c == '&' || c == '^' || c == '~' || c == '*' || c == '?') {
             name.erase(0, 1);
             return std::string(1, c);
         }
@@ -237,7 +259,7 @@ static std::string patternMorphologyPrefix(const MatchArm::Pattern *pat) {
     if (!pat) return "";
     switch (pat->Permission.Morphology) {
     case BindingMorphology::Raw:
-        return "*";
+        return pat->Permission.IdentityMayBeZero ? "?" : "*";
     case BindingMorphology::Unique:
         return "^";
     case BindingMorphology::Shared:
@@ -252,7 +274,50 @@ static std::string patternMorphologyPrefix(const MatchArm::Pattern *pat) {
 
 static std::string reconstructPatternHead(const MatchArm::Pattern *pat,
                                           bool includeSoulSuffix) {
-    std::string name = pat ? pat->Name : "";
+    if (!pat) return "";
+    std::string name = pat->Name;
+    if (!pat->Permission.HandleLayers.empty()) {
+        while (!name.empty() &&
+               (name[0] == '&' || name[0] == '^' || name[0] == '~' ||
+                name[0] == '*' || name[0] == '?' || name[0] == '#' ||
+                name[0] == '$')) {
+            name.erase(0, 1);
+        }
+        std::string prefix;
+        for (const auto &layer : pat->Permission.HandleLayers) {
+            switch (layer.Morphology) {
+            case BindingMorphology::Raw:
+                prefix += layer.Nullable ? "?" : "*";
+                break;
+            case BindingMorphology::Unique:
+                prefix += "^";
+                break;
+            case BindingMorphology::Shared:
+                prefix += "~";
+                break;
+            case BindingMorphology::Reference:
+                prefix += "&";
+                break;
+            case BindingMorphology::None:
+                break;
+            }
+            if (layer.Rebindable) {
+                prefix += "#";
+            } else if (layer.Blocked) {
+                prefix += "$";
+            }
+        }
+        std::string result = prefix + name;
+        if (includeSoulSuffix) {
+            if (pat->IsValueMutable || pat->Permission.SoulWritable) {
+                result += "#";
+            } else if (pat->IsValueBlocked || pat->Permission.SoulBlocked) {
+                result += "$";
+            }
+        }
+        return result;
+    }
+
     std::string prefix = takePatternMorphologyPrefix(name);
     if (prefix.empty()) {
         prefix = patternMorphologyPrefix(pat);
@@ -371,9 +436,11 @@ void TKIExporter::exportModule(const Module &module) {
         writeln("// @meta local_body_definitions: " + definitions);
     }
     writeln("// @meta format_version: " + std::string(TOKA_INTERFACE_FORMAT_VERSION));
+    writeln("// @meta language_epoch: " + getActiveLanguageEpoch());
     writeln("// @meta encap_epoch: " + getActiveEncapEpoch());
     writeln("// @meta replay_surface_hash: " +
-            calculateFNV1a(formatReplaySurfaceHashInput(declarations)));
+            calculateFNV1a(formatReplaySurfaceHashInput(
+                declarations, getActiveLanguageEpoch(), getActiveEncapEpoch())));
     writeln("// @meta target_triple: " + Parser::TargetTriple);
     writeln("// @meta source_hash: " + sourceHash);
     writeln("// @meta source_path: " + PathUtils::canonicalize(module.SourcePath));
@@ -608,15 +675,17 @@ void TKIExporter::exportShape(const ShapeDecl &decl) {
             const auto &m = decl.Members[i];
             if (m.Vis == Visibility::Public) m_OS << "pub ";
             else if (m.Vis == Visibility::Package) m_OS << "pkg ";
-            std::string varStr = reconstructVar(
-                m.Name, exportTypeSyntax(m.TypeSyntax, m.Type),
-                m.IsRawPointer, m.IsUnique, m.IsShared, m.IsReference,
-                m.IsPointerNullable, m.IsRebindable, m.IsRebindBlocked,
-                m.IsExplicitBound, m.IsMorphicExempt, false,
-                m.IsValueMutable, m.IsValueNullable, m.IsValueBlocked
+            const std::string memberType = exportTypeSyntax(m.TypeSyntax, m.Type);
+            std::string varStr = reconstructVarFromPermission(
+                m.Name, memberType,
+                normalizeExportPermission(
+                    m.Permission, m.IsRawPointer, m.IsUnique, m.IsShared, m.IsReference,
+                    m.IsPointerNullable, m.IsRebindable, m.IsRebindBlocked,
+                    m.IsMorphicExempt, m.IsValueMutable, m.IsValueNullable, m.IsValueBlocked
+                ),
+                m.IsExplicitBound, false
             );
-            m_OS << varStr << ": " << exportBindingType(
-                exportTypeSyntax(m.TypeSyntax, m.Type));
+            m_OS << varStr << ": " << exportBindingType(memberType);
             if (m.DefaultValue) {
                 m_OS << " = ";
                 exportExpr(m.DefaultValue.get());
@@ -907,15 +976,17 @@ void TKIExporter::exportExtern(const ExternDecl &decl) {
     for (size_t i = 0; i < decl.Args.size(); ++i) {
         if (i > 0) m_OS << ", ";
         const auto &arg = decl.Args[i];
-        std::string varStr = reconstructVar(
-            arg.Name, exportTypeSyntax(arg.TypeSyntax, arg.Type),
-            arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
-            arg.IsPointerNullable, arg.IsRebindable, arg.IsRebindBlocked,
-            false, arg.IsMorphicExempt, arg.IsCeded,
-            arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked
+        const std::string argType = exportTypeSyntax(arg.TypeSyntax, arg.Type);
+        std::string varStr = reconstructVarFromPermission(
+            arg.Name, argType,
+            normalizeExportPermission(
+                arg.Permission, arg.IsRawPointer, arg.IsUnique, arg.IsShared, arg.IsReference,
+                arg.IsPointerNullable, arg.IsRebindable, arg.IsRebindBlocked,
+                arg.IsMorphicExempt, arg.IsValueMutable, arg.IsValueNullable, arg.IsValueBlocked
+            ),
+            false, arg.IsCeded
         );
-        m_OS << varStr << ": " << exportBindingType(
-            exportTypeSyntax(arg.TypeSyntax, arg.Type));
+        m_OS << varStr << ": " << exportBindingType(argType);
         if (arg.DefaultValue) {
             m_OS << " = ";
             exportExpr(arg.DefaultValue.get());
@@ -935,19 +1006,20 @@ void TKIExporter::exportGlobal(const Stmt &stmt) {
         if ((!decl->IsPub && !decl->isPkg()) || !decl->IsConst) return;
         indent();
         m_OS << (decl->IsPub ? "pub const " : "pkg const ");
-        std::string varStr = reconstructVar(
-            decl->Name, exportTypeSyntax(decl->DeclaredTypeSyntax, decl->TypeName),
-            decl->IsRawPointer, decl->IsUnique, decl->IsShared, decl->IsReference,
-            decl->IsPointerNullable, decl->IsRebindable, decl->IsRebindBlocked,
-            false, decl->IsMorphicExempt, false,
-            decl->IsValueMutable, decl->IsValueNullable, decl->IsValueBlocked
+        const std::string globalType = exportTypeSyntax(decl->DeclaredTypeSyntax, decl->TypeName);
+        std::string varStr = reconstructVarFromPermission(
+            decl->Name, globalType,
+            normalizeExportPermission(
+                decl->Permission, decl->IsRawPointer, decl->IsUnique, decl->IsShared, decl->IsReference,
+                decl->IsPointerNullable, decl->IsRebindable, decl->IsRebindBlocked,
+                decl->IsMorphicExempt, decl->IsValueMutable, decl->IsValueNullable, decl->IsValueBlocked
+            ),
+            false, false
         );
         m_OS << varStr;
         if (!decl->TypeName.empty() &&
-            exportTypeSyntax(decl->DeclaredTypeSyntax, decl->TypeName)
-                .rfind("__Toka_Anon_Rec_", 0) != 0) {
-            m_OS << ": " << exportBindingType(
-                exportTypeSyntax(decl->DeclaredTypeSyntax, decl->TypeName));
+            globalType.rfind("__Toka_Anon_Rec_", 0) != 0) {
+            m_OS << ": " << exportBindingType(globalType);
         }
         m_OS << " = ";
         uint64_t val = 0;
@@ -1016,9 +1088,6 @@ bool TKIExporter::printMorphologyWhereConstraints(
 }
 
 void TKIExporter::printArg(const FunctionDecl::Arg &arg) {
-    if (arg.Permission.HandleLayers.size() > 1) {
-        assert(false && "TKIExporter invariant violation: multi-layer formal parameter root reaches TKI emission");
-    }
     if (arg.IsInit)
         m_OS << "init ";
     const std::string type = exportTypeSyntax(arg.TypeSyntax, arg.Type);
@@ -1097,7 +1166,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         switch (un->Op) {
             case TokenType::Caret: opStr = "^"; break;
             case TokenType::Tilde: opStr = "~"; break;
-            case TokenType::Star: opStr = "*"; break;
+            case TokenType::Star: opStr = un->HasNull ? "?" : "*"; break;
             case TokenType::Ampersand: opStr = "&"; break;
             case TokenType::MorphicIdentity: opStr = "'"; break;
             case TokenType::Plus: opStr = "+"; break;
@@ -1106,7 +1175,7 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
             default: break;
         }
         m_OS << opStr;
-        if (un->HasNull) m_OS << "?";
+        if (un->HasNull && un->Op != TokenType::Star) m_OS << "?";
         if (un->IsRebindable) m_OS << "#";
         if (un->IsRebindBlocked) m_OS << "$";
         exportExpr(un->RHS.get());
@@ -1334,8 +1403,12 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
     } else if (auto gEx = dynamic_cast<const GuardExpr *>(expr)) {
         m_OS << "guard ";
         exportExpr(gEx->Condition.get());
-        m_OS << " else ";
-        exportStmt(gEx->Else.get());
+        m_OS << " ";
+        exportStmt(gEx->Then.get());
+        if (gEx->Else) {
+            m_OS << " else ";
+            exportStmt(gEx->Else.get());
+        }
     } else if (auto loopEx = dynamic_cast<const LoopExpr *>(expr)) {
         m_OS << "loop ";
         if (loopEx->Condition) {
@@ -1378,7 +1451,13 @@ void TKIExporter::exportExpr(const Expr *expr, bool stripHats) {
         if (clo->HasExplicitArgs) {
             for (size_t i = 0; i < clo->ArgNames.size(); ++i) {
                 if (i > 0) m_OS << ", ";
-                m_OS << clo->ArgNames[i];
+                if (i < clo->Params.size()) {
+                    m_OS << reconstructVarFromPermission(
+                        clo->Params[i].Name, "", clo->Params[i].Permission,
+                        false, false);
+                } else {
+                    m_OS << clo->ArgNames[i];
+                }
             }
         }
         if (hasHeader) {
@@ -1411,12 +1490,14 @@ void TKIExporter::exportStmt(const Stmt *stmt, bool indentStmt) {
         } else {
             m_OS << "auto ";
         }
-        std::string varStr = reconstructVar(
+        std::string varStr = reconstructVarFromPermission(
             decl->Name, decl->TypeName,
-            decl->IsRawPointer, decl->IsUnique, decl->IsShared, decl->IsReference,
-            decl->IsPointerNullable, decl->IsRebindable, decl->IsRebindBlocked,
-            false, decl->IsMorphicExempt, false,
-            decl->IsValueMutable, decl->IsValueNullable, decl->IsValueBlocked
+            normalizeExportPermission(
+                decl->Permission, decl->IsRawPointer, decl->IsUnique, decl->IsShared, decl->IsReference,
+                decl->IsPointerNullable, decl->IsRebindable, decl->IsRebindBlocked,
+                decl->IsMorphicExempt, decl->IsValueMutable, decl->IsValueNullable, decl->IsValueBlocked
+            ),
+            false, false
         );
         m_OS << varStr;
         if (!decl->TypeName.empty()) {
@@ -1434,18 +1515,67 @@ void TKIExporter::exportStmt(const Stmt *stmt, bool indentStmt) {
             m_OS << dest->TypeName;
         }
         m_OS << "(";
+        auto reconstructDestructuredVar = [](const DestructuredVar &v) -> std::string {
+            std::string name = v.Name;
+            if (!v.Permission.HandleLayers.empty()) {
+                while (!name.empty() &&
+                       (name[0] == '&' || name[0] == '^' || name[0] == '~' ||
+                        name[0] == '*' || name[0] == '?' || name[0] == '#' ||
+                        name[0] == '$')) {
+                    name.erase(0, 1);
+                }
+                std::string prefix;
+                for (const auto &layer : v.Permission.HandleLayers) {
+                    switch (layer.Morphology) {
+                    case BindingMorphology::Raw:
+                        prefix += layer.Nullable ? "?" : "*";
+                        break;
+                    case BindingMorphology::Unique:
+                        prefix += "^";
+                        break;
+                    case BindingMorphology::Shared:
+                        prefix += "~";
+                        break;
+                    case BindingMorphology::Reference:
+                        prefix += "&";
+                        break;
+                    case BindingMorphology::None:
+                        break;
+                    }
+                    if (layer.Rebindable) {
+                        prefix += "#";
+                    } else if (layer.Blocked) {
+                        prefix += "$";
+                    }
+                }
+                std::string result = prefix + name;
+                if (v.IsValueMutable || v.Permission.SoulWritable) {
+                    result += "#";
+                } else if (v.IsValueBlocked || v.Permission.SoulBlocked) {
+                    result += "$";
+                }
+                return result;
+            }
+            std::string result = name;
+            if (v.IsValueMutable || v.Permission.SoulWritable) {
+                result += "#";
+            } else if (v.IsValueBlocked || v.Permission.SoulBlocked) {
+                result += "$";
+            }
+            return result;
+        };
         for (size_t i = 0; i < dest->Variables.size(); ++i) {
             if (i > 0) m_OS << ", ";
             const auto &v = dest->Variables[i];
-            if (v.IsWildcard) {
+            if (v.Name == "..") {
+                m_OS << "..";
+            } else if (v.IsWildcard && (v.FieldName.empty() || v.FieldName == "_")) {
                 m_OS << "_";
             } else {
-                if (!v.FieldName.empty()) {
-                    m_OS << v.FieldName << " = ";
+                m_OS << reconstructDestructuredVar(v);
+                if (!v.FieldName.empty() && v.FieldName != v.Name) {
+                    m_OS << " = ." << v.FieldName;
                 }
-                m_OS << v.Name;
-                if (v.IsValueMutable) m_OS << "#";
-                else if (v.IsValueBlocked) m_OS << "$";
             }
         }
         m_OS << ")";
@@ -1533,10 +1663,24 @@ void TKIExporter::exportPattern(const MatchArm::Pattern *pat) {
             m_OS << reconstructPatternHead(pat, false) << "(";
             for (size_t i = 0; i < pat->SubPatterns.size(); ++i) {
                 if (i > 0) m_OS << ", ";
-                if (pat->SubPatternNames.size() > i && !pat->SubPatternNames[i].empty()) {
-                    m_OS << pat->SubPatternNames[i] << " = ";
-                }
                 exportPattern(pat->SubPatterns[i].get());
+                if (pat->SubPatternNames.size() > i &&
+                    !pat->SubPatternNames[i].empty() &&
+                    pat->SubPatternNames[i] != "..") {
+                    std::string inferredName;
+                    if (pat->SubPatterns[i] &&
+                        pat->SubPatterns[i]->PatternKind ==
+                            MatchArm::Pattern::Variable) {
+                        inferredName = pat->SubPatterns[i]->Name;
+                        if (pat->SubPatterns[i]->IsReference &&
+                            (inferredName.empty() || inferredName[0] != '&')) {
+                            inferredName = "&" + inferredName;
+                        }
+                    }
+                    if (pat->SubPatternNames[i] != inferredName) {
+                        m_OS << " = ." << pat->SubPatternNames[i];
+                    }
+                }
             }
             m_OS << ")";
             break;

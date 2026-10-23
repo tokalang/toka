@@ -26,8 +26,8 @@ fn main() -> i32 {
         if a != 42 { return 4 }
 
         // Test malloc/free
-        auto nul *ptr = libc_malloc(10:u64)
-        if *ptr == null { return 5 }
+        auto ?ptr = libc_malloc(10:u64)
+        if ?ptr == null { return 5 }
         auto *live_ptr = ptr.unwrap()
         libc_free(*live_ptr)
 

@@ -20,9 +20,9 @@ shape Data = (
 
 fn main() -> i32 {
     // 1. Raw Pointer (Nullable)
-    auto nul *p1# = null:nul *Data
+    auto ?p1# = null:?Data
     unsafe {
-        if *p1 == null {
+        if ?p1 == null {
             println("Raw pointer null OK")
             assert(true, "Raw pointer null OK")
         } else {

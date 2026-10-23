@@ -10,7 +10,7 @@ namespace {
 constexpr const char *kReadDataFileSourceSHA256 =
     "09d9bb383bac77f326d8b4b34fe4f9808e575905d1a092f46b9a3545e4e737be";
 constexpr const char *kNativeDeclarationsSHA256 =
-    "9ad7d86356a3e7da822b9ff78ce5eb17c315eba280d0b0e55f9ac319d48c87a0";
+    "0fb89324c9179ebd98c6655dd47f23d95ad12845884e05898d2eae1cd5e203ab";
 
 std::string sha256LoadedSource(SourceLocation location) {
   if (!DiagnosticEngine::SrcMgr || !location.isValid()) return {};

@@ -1029,6 +1029,7 @@ bool ModuleResolver::readTKIMetadata(const std::string &path, TKIMetadata &meta)
                 trim(val);
                 if (key == "compiler_version") meta.CompilerVersion = val;
                 else if (key == "format_version") meta.FormatVersion = val;
+                else if (key == "language_epoch") meta.LanguageEpoch = val;
                 else if (key == "encap_epoch") meta.EncapEpoch = val;
                 else if (key == "replay_surface_hash") meta.ReplaySurfaceHash = val;
                 else if (key == "target_triple") meta.TargetTriple = val;
@@ -1093,6 +1094,12 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(
         reason = "Interface format version mismatch (expected " + std::string(TOKA_INTERFACE_FORMAT_VERSION) + ", got " + meta.FormatVersion + ")";
         return TKICacheStatus::FormatVersionMismatch;
     }
+    if (meta.LanguageEpoch.empty() || meta.LanguageEpoch != getActiveLanguageEpoch()) {
+        reason = "Interface language_epoch mismatch (expected " +
+                 getActiveLanguageEpoch() + ", got " +
+                 (meta.LanguageEpoch.empty() ? "<missing>" : meta.LanguageEpoch) + ")";
+        return TKICacheStatus::FormatVersionMismatch;
+    }
     if (meta.EncapEpoch.empty() || meta.EncapEpoch != getActiveEncapEpoch()) {
         reason = "Interface encap_epoch mismatch (expected " +
                  getActiveEncapEpoch() + ", got " +
@@ -1111,7 +1118,7 @@ TKICacheStatus ModuleResolver::validateTKIMetadata(
         if (declarationsBegin == std::string::npos ||
             calculateFNV1a(formatReplaySurfaceHashInput(
                 content.substr(declarationsBegin + 2),
-                getActiveEncapEpoch())) !=
+                meta.LanguageEpoch, meta.EncapEpoch)) !=
                 meta.ReplaySurfaceHash) {
             reason = "Interface replay surface hash mismatch";
             return TKICacheStatus::FormatVersionMismatch;

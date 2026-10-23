@@ -17,7 +17,7 @@ fn coordinate()->async i32 {
  m#.set_delay(1000:i32)
  auto f#=FramedReader<MockMemoryStream>::new(cede m)
  auto task=f#.read_frame_async(Vec<u8>::with_capacity(16:usize),1000:i32)
- auto nul *tcb=task_get_coro_handle<Result<FramedReadResult,FramedError>>(task)
+ auto ?tcb=task_get_coro_handle<Result<FramedReadResult,FramedError>>(task)
  auto *live=tcb.unwrap()
  toka_task_start(*live)
  auto polls#=0:i32

@@ -44,10 +44,10 @@ fn parent() -> async i32 {
 
 fn supervisor() -> async i32 {
     auto p = parent()
-    auto nul *ptcb = task_get_coro_handle<i32>(p)
-    if *ptcb != null { toka_task_start(ptcb.unwrap()) }
+    auto ?ptcb = task_get_coro_handle<i32>(p)
+    if ?ptcb != null { toka_task_start(ptcb.unwrap()) }
     sleep_async(15:i32).await
-    if *ptcb != null { toka_task_request_cancel(ptcb.unwrap()) }
+    if ?ptcb != null { toka_task_request_cancel(ptcb.unwrap()) }
     auto _ = p.await?
     sleep_async(50:i32).await
     return 0:i32

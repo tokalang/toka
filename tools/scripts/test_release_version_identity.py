@@ -40,13 +40,13 @@ def require_version(build, version, source_version):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True, type=Path)
-    parser.add_argument("--version", default="v0.19.0")
+    parser.add_argument("--version", default="v0.20.0")
     args = parser.parse_args()
     expected = args.version.removeprefix("v")
     source_version = expected.split("-", 1)[0].split("+", 1)[0]
-    if not re.fullmatch(r"0\.(?:11|12|13|14|15|16|17|18|19)\.(0|[1-9][0-9]*)", source_version):
-        raise RuntimeError("expected version is outside the supported 0.11.x/0.12.x/0.13.x/0.14.x/0.15.x/0.16.x/0.17.x/0.18.x/0.19.x lines")
-    probe_override = source_version + "-dev.19"
+    if not re.fullmatch(r"0\.(?:11|12|13|14|15|16|17|18|19|20)\.(0|[1-9][0-9]*)", source_version):
+        raise RuntimeError("expected version is outside the supported 0.11.x/0.12.x/0.13.x/0.14.x/0.15.x/0.16.x/0.17.x/0.18.x/0.19.x/0.20.x lines")
+    probe_override = source_version + "-dev.20"
 
     with tempfile.TemporaryDirectory(prefix="toka-release-version-") as temporary:
         build = Path(temporary) / "build"

@@ -222,7 +222,7 @@ std::shared_ptr<Type> Sema::checkRawTakeExpr(RawTakeExpr *take) {
   if (!indexType || !indexType->isInteger())
     return reject("IntegerIndexRequired");
   if (storageType->IsNullable &&
-      !m_NarrowedPaths.count(getPathString(index->Array.get())))
+      !hasActiveNonZeroFact(getPathString(index->Array.get())))
     return reject("NonNullStorageRequired");
   auto storage = resolveType(storageType->getPointeeType(), true);
   if (!storage || (!storage->isSlice() && !storage->isArray()))

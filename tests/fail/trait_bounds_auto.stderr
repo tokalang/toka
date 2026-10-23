@@ -1,4 +1,4 @@
-error[E0483]: Plain raw pointer type '*i32' cannot contain or test null; use 'nul *T' for a may-zero raw address
+error[E0483]: Plain raw pointer type '*i32' cannot contain or test null; use '?T' for a may-zero raw address
  --> tests/fail/trait_bounds_auto.tk:15:45
     |
  15 |     auto ^u2 = new UnsafeData(value=0, *ptr=null)

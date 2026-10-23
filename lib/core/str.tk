@@ -634,7 +634,7 @@ impl str {
     }
 
     pub fn as_cstr(self) -> cstr {
-        return cstr(*buf = self.raw_ptr())
+        return cstr(?buf = self.raw_ptr())
     }
 }
 
@@ -644,7 +644,7 @@ fn _internal_str_cast(s: str) -> str <- s {
 
 // A raw null-terminated C-string pointer representation
 pub shape cstr(
-    pub nul *buf: char
+    pub ?buf: char
 )
 
 impl cstr@Encap {
@@ -655,10 +655,10 @@ impl cstr@Encap {
 
 impl cstr {
     pub fn clone(self) -> cstr <- self {
-        return cstr(*buf = self.*buf)
+        return cstr(?buf = self.?buf)
     }
-    pub fn raw_ptr(self) -> nul *char {
-        return self.*buf
+    pub fn raw_ptr(self) -> ?char {
+        return self.?buf
     }
 }
 
@@ -674,10 +674,10 @@ impl cstr {
         res.&buf <- self
     {
         unsafe {
-            if self.*buf == null {
+            if self.?buf == null {
                 return ""
             }
-            auto *buf = self.*buf.unwrap()
+            auto *buf = self.?buf.unwrap()
             auto len = libc_strlen(*buf)
             return str(&buf = (*buf as *[char]) as &[char], len = len)
         }

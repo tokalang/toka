@@ -273,10 +273,9 @@ Toka uses a compact token system:
 | Token | Role |
 | :--- | :--- |
 | `#` | Mutability for a payload binding or rebinding authority for a handle binding |
-| `?` | Removed nullable payload spelling (E0484) |
+| `?` | Raw pointer handle whose physical address may be zero (`?T`, `?p`) |
 | `&` | Borrow/reference handle |
 | `*` | Non-zero raw pointer handle |
-| `nul *` | Raw pointer handle whose physical address may be zero |
 | `^` | Unique owning handle |
 | `~` | Shared owning handle |
 | `'T` | Morphic generic parameter that preserves handle shape |

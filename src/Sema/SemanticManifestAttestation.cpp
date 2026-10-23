@@ -256,6 +256,10 @@ std::string attestationMessage(
     llvm::StringRef objectDigest) {
   std::string result = "toka.semantic-manifest-p2-attestation-v1\0";
   const auto &input = prepared.Input;
+  (void)appendBytes(result, TOKA_COMPILER_INTERFACE_VERSION);
+  (void)appendBytes(result, TOKA_INTERFACE_FORMAT_VERSION);
+  (void)appendBytes(result, getActiveLanguageEpoch());
+  (void)appendBytes(result, getActiveEncapEpoch());
   (void)appendBytes(result, input.TargetTriple);
   (void)appendBytes(result, input.Module.CrateId);
   (void)appendBytes(result, input.Module.LogicalModulePath);
@@ -370,6 +374,8 @@ std::string canonicalDocument(
       << ",\"payload_schema\":\"" << PayloadSchema.str()
       << "\",\"compiler_version\":\"" << TOKA_COMPILER_INTERFACE_VERSION
       << "\",\"interface_format\":\"" << TOKA_INTERFACE_FORMAT_VERSION
+      << "\",\"language_epoch\":\"" << escapeJSON(getActiveLanguageEpoch())
+      << "\",\"encap_epoch\":\"" << escapeJSON(getActiveEncapEpoch())
       << "\",\"target_triple\":\"" << escapeJSON(input.TargetTriple)
       << "\",\"module\":{\"crate_id\":\""
       << escapeJSON(input.Module.CrateId)
@@ -430,6 +436,7 @@ SemanticManifestAttestationStatus loadImpl(
   if (!document ||
       !hasExactFields(*document, {"schema", "version", "payload_schema",
                                   "compiler_version", "interface_format",
+                                  "language_epoch", "encap_epoch",
                                   "target_triple", "module", "interface_sha256",
                                   "semantic_dependency_closure_sha256",
                                   "payload_sha256", "object", "records"}))
@@ -456,6 +463,8 @@ SemanticManifestAttestationStatus loadImpl(
   const auto logicalModulePath = module->getString("logical_module_path");
   const auto compilerVersion = document->getString("compiler_version");
   const auto interfaceFormat = document->getString("interface_format");
+  const auto languageEpoch = document->getString("language_epoch");
+  const auto encapEpoch = document->getString("encap_epoch");
   const auto targetTriple = document->getString("target_triple");
   const auto interfaceDigest = document->getString("interface_sha256");
   const auto closureDigest =
@@ -464,9 +473,11 @@ SemanticManifestAttestationStatus loadImpl(
   const auto objectDigest = object->getString("sha256");
   const auto marker = object->getString("marker");
   if (!crateId || !logicalModulePath || !compilerVersion || !interfaceFormat ||
+      !languageEpoch || !encapEpoch ||
       !targetTriple || !interfaceDigest || !closureDigest || !payloadDigest ||
       !objectDigest || !marker || !validText(*crateId) ||
-      !validText(*logicalModulePath) || !validText(*targetTriple) ||
+      !validText(*logicalModulePath) || !validText(*languageEpoch) ||
+      !validText(*encapEpoch) || !validText(*targetTriple) ||
       !isLowerSHA256(*interfaceDigest) || !isLowerSHA256(*closureDigest) ||
       !isLowerSHA256(*payloadDigest) || !isLowerSHA256(*objectDigest) ||
       *marker != markerForPayload(*payloadDigest))
@@ -475,6 +486,8 @@ SemanticManifestAttestationStatus loadImpl(
 
   if (*compilerVersion != TOKA_COMPILER_INTERFACE_VERSION ||
       *interfaceFormat != TOKA_INTERFACE_FORMAT_VERSION ||
+      *languageEpoch != getActiveLanguageEpoch() ||
+      *encapEpoch != getActiveEncapEpoch() ||
       *targetTriple != expectedTargetTriple ||
       *crateId != expectedModule.CrateId ||
       *logicalModulePath != expectedModule.LogicalModulePath ||

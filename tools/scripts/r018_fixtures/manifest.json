@@ -2,9 +2,9 @@
   "bodyless_negative_probes/neg1_bodyless_consumer.tk": "62d9f99551e1b76008d731fff64b40c29af57ff109839575b9dec3ad1860f8b7",
   "bodyless_negative_probes/neg2_bodyless_fwd.tk": "a361ce8fd80cec19390110edc5a278af41358877829ef92d5bb856268740eaeb",
   "bodyless_negative_probes/neg3_bodyless_scoped.tk": "091a1e05a717b2c6b411300e229a6f5891f4702573da06f65b417fcb3c7862d7",
-  "modules/bodyless_consumer.tki": "e953a0f760947d56891115c47ad1439a037970a88de1f9d33d5c38e3c9708da7",
-  "modules/bodyless_provider.tki": "2f01dd78700ffc1f4d6b33e603ba7631b24f1c26d3bd21d7d7ae6f01fa0ecf42",
-  "modules/ext_provider.tki": "8720fac8cbcf9fa42875a352300d560c110ffae60242e7ddcc4be2e1123b5365",
+  "modules/bodyless_consumer.tki": "657981ae75aa48d91de5087fc8de644fb7315b128b7874538aa84740f6e1cdae",
+  "modules/bodyless_provider.tki": "0d151d6fe9d7ed5aa6d218fef72daba44dbd74b2ed6367c29444f3a9d0c9d6ea",
+  "modules/ext_provider.tki": "6c566bb758b2e40824380bbee20c682de5a270ddb1abb794f3e381480df40399",
   "negative_probes/leak10_method_receiver_start_bypass_then_join_empty_s1_split_var.tk": "75fc025899c0240f71a0526c2a617d811b779d2df142a0456fa55d82d4c9c25d",
   "negative_probes/leak11_mixed_carrier_wrapper_fn.tk": "707f648ff86734bbba79fd8f533657a02999a060f083206e7a73b56b82b8b16f",
   "negative_probes/leak1_d3_m2_split_var.tk": "10cfd4f745872c2c9ec56ace5d11c9a02bc82b45a9ac62d09a56d074ad5bf37c",
@@ -60,6 +60,6 @@
   "positive_probes/r5_pos1_cede_self_receiver_start.tk": "c0f8b4ecb91485093f05198d9cbd167fed593b61b392221922ef16b99fb9b0e5",
   "positive_probes/v0171_pos1_cede_param_drop_matrix.tk": "e03084bff654e62bfd1b94f5516f0ba039760a45dec697638a80fd57fe2a49d0",
   "positive_probes/v0171_pos2_owned_and_local_await_carriers.tk": "b6fdbcacb6e3f4b8ef3d796676a6ef200d2b88a756bc7ece7a331524ac51d7b6",
-  "positive_probes/v018_s1_pos1_async_close_7_lifecycle_paths.tk": "a09a507f58595864f4cd25e8e48bf94039cdb166fb50b223a212d22870d657bc",
+  "positive_probes/v018_s1_pos1_async_close_7_lifecycle_paths.tk": "e6f41e8c24daa6d6f117d9f188fd264163f2d9598da5c47a53d16efe3ead1439",
   "positive_probes/v018_s1_pos2_borrowed_and_ref_carrier_local_await_and_generic.tk": "7e7aeeaad69b06eb48b3ba96debb166371d2598d565001d5839a9dc1aa6bcad3"
 }

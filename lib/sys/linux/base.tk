@@ -12,8 +12,8 @@ pub fn path_sep() -> char {
 pub fn args_impl() -> i32 {
     unsafe {
         auto cmd = string::from("/proc/self/cmdline")
-        auto nul *file = libc_fopen(cmd.c_str(), c"rb")
-        if *file == null { return 0 }
+        auto ?file = libc_fopen(cmd.c_str(), c"rb")
+        if ?file == null { return 0 }
         auto *live_file = file.unwrap()
         auto *buf = unsafe alloc [4096] byte
         auto len = libc_fread(*buf as *void, 1, 4096, *live_file)
@@ -40,8 +40,8 @@ pub fn args_impl() -> i32 {
 pub fn get_arg_impl(index: i32) -> string {
     unsafe {
         auto cmd = string::from("/proc/self/cmdline")
-        auto nul *file = libc_fopen(cmd.c_str(), c"rb")
-        if *file == null { return string::from("") }
+        auto ?file = libc_fopen(cmd.c_str(), c"rb")
+        if ?file == null { return string::from("") }
         auto *live_file = file.unwrap()
         auto *buf = unsafe alloc [4096] byte
         auto len = libc_fread(*buf as *void, 1, 4096, *live_file)
@@ -98,14 +98,14 @@ pub fn chdir_impl(path: Addr) -> bool {
 pub fn getenv_impl(name: string) -> Option<string> {
     unsafe {
         // libc_getenv returns *char (Borrowed)
-        auto nul *val = libc_getenv(name.c_str())
+        auto ?val = libc_getenv(name.c_str())
         
-        if *val == null {
+        if ?val == null {
             return Option<string>::None
         }
         
         // Copy from borrowed pointer
-        return Option<string>::Some(string::from_cstr(*val))
+        return Option<string>::Some(string::from_cstr(?val))
     }
 }
 

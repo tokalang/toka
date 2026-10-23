@@ -115,7 +115,13 @@ RawAddressSourcePtr Sema::collectRawAddressSource(Expr *expression, bool view) {
                               (!pointee->IsWritable || pointee->IsBlocked || !info->Permission.SoulWritable)) ||
                            info->HasPayloadFlowCeiling && !info->PayloadFlowWritable ||
                            info->Permission.SoulBlocked;
-        storage->MayBeNull = visibleType->IsNullable && !m_NarrowedPaths.count(getPathString(expression));
+        const bool isNarrowedNonNull =
+            m_NarrowedPaths.count(getPathString(expression)) ||
+            hasActiveNonZeroFact(getPathString(expression));
+        const bool declaredNullable =
+            (visibleType && visibleType->IsNullable) ||
+            (info->TypeObj && info->TypeObj->IsNullable);
+        storage->MayBeNull = declaredNullable && !isNarrowedNonNull;
         auto path = canonicalizeAccessPath(makeAccessPath(variable));
         if (path && path.RootID) storage->Origins.push_back(path);
         if (info->IsFunctionParameter && CurrentFunction) {
@@ -127,7 +133,7 @@ RawAddressSourcePtr Sema::collectRawAddressSource(Expr *expression, bool view) {
             }
         }
         result = mergeRawAddressSources(result, storage);
-        if (visibleType->IsNullable && m_NarrowedPaths.count(getPathString(expression))) {
+        if (declaredNullable && isNarrowedNonNull) {
           auto nonzero = std::make_shared<RawAddressSource>();
           nonzero->NonNull = true;
           nonzero->Inputs = {result};

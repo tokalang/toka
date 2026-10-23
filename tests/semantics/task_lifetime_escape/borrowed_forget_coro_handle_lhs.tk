@@ -4,7 +4,7 @@ fn process(buf: Buffer) -> async i32 { return buf.size }
 
 fn forget_coro_handle(cede handle: TaskHandle<i32>) {
     auto owned_handle# = cede handle
-    owned_handle.*coro_handle = null as nul *void
+    owned_handle.?coro_handle = null as ?void
 }
 
 pub fn leak() {

@@ -27,7 +27,7 @@ def main():
             _, separator, declarations = text.partition('\n\n')
             assert separator, text
             digest = 14695981039346656037
-            for byte in ('// @encap_epoch 0.19\n' + declarations).encode('utf-8'):
+            for byte in ('// @language_epoch 0.20\n// @encap_epoch 0.19\n' + declarations).encode('utf-8'):
                 digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
             text, count = re.subn(
                 r'(?m)^// @meta replay_surface_hash: [0-9a-f]{16}$',

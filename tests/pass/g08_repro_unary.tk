@@ -45,8 +45,8 @@ fn check_shared_ptr(~ptr: Data) {
     assert(ptr.val == 20, "Shared pointer payload")
 }
 
-fn check_raw_ptr(nul *ptr: [i32]) {
-    guard *ptr {
+fn check_raw_ptr(?ptr: [i32]) {
+    guard ?ptr {
         println("Raw pointer is not null confirmed")
     } else {
         println("Raw pointer is null confirmed")
@@ -57,11 +57,11 @@ fn check_raw_ptr(nul *ptr: [i32]) {
 
 
 fn main() -> i32 {
-    auto nul *q# = unsafe alloc [2]i32(999)
+    auto ?q# = unsafe alloc [2]i32(999)
     println("--- Before check_raw_ptr ---")
-    check_raw_ptr(*q)
+    check_raw_ptr(?q)
     println("--- Before unsafe free ---")
-    guard *q
+    guard ?q
     {
         unsafe {
             assert(q[0] == 999, "q#[0] mismatch")
@@ -76,8 +76,8 @@ fn main() -> i32 {
     }
 
 
-    guard *q {
-        unsafe free [2]*q
+    guard ?q {
+        unsafe free [2]?q
         println("--- After unsafe free ---")
     }    
 

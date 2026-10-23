@@ -2,8 +2,8 @@ import std/vec::{Vec}
 
 fn choose(input: str) -> Vec<str> <- input {
     auto values# = Vec<str>::new()
-    auto nul *candidate = unsafe (0:Addr as nul *i32)
-    guard *candidate {
+    auto ?candidate = unsafe (0:Addr as ?i32)
+    guard ?candidate {
         auto local_owner = string::from("local")
         values#.push(local_owner.as_str())
         cede values

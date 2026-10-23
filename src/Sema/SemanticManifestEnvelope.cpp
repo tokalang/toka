@@ -220,6 +220,8 @@ std::string canonicalDocument(const SemanticManifestCoordinate &coordinate,
       << ",\"payload_schema\":\"" << PayloadSchema.str()
       << "\",\"compiler_version\":\"" << TOKA_COMPILER_INTERFACE_VERSION
       << "\",\"interface_format\":\"" << TOKA_INTERFACE_FORMAT_VERSION
+      << "\",\"language_epoch\":\"" << escapeJSON(getActiveLanguageEpoch())
+      << "\",\"encap_epoch\":\"" << escapeJSON(getActiveEncapEpoch())
       << "\",\"target_triple\":\"" << escapeJSON(targetTriple)
       << "\",\"module\":{\"crate_id\":\"" << escapeJSON(coordinate.CrateId)
       << "\",\"logical_module_path\":\""
@@ -339,6 +341,7 @@ SemanticManifestEnvelopeStatus SemanticManifestEnvelope::load(
   if (!document ||
       !hasExactFields(*document, {"schema", "version", "payload_schema",
                                   "compiler_version", "interface_format",
+                                  "language_epoch", "encap_epoch",
                                   "target_triple", "module", "interface_sha256",
                                   "semantic_dependency_closure_sha256",
                                   "payload_sha256", "records"}))
@@ -366,6 +369,10 @@ SemanticManifestEnvelopeStatus SemanticManifestEnvelope::load(
       document->getString("compiler_version");
   std::optional<llvm::StringRef> interfaceFormat =
       document->getString("interface_format");
+  std::optional<llvm::StringRef> languageEpoch =
+      document->getString("language_epoch");
+  std::optional<llvm::StringRef> encapEpoch =
+      document->getString("encap_epoch");
   std::optional<llvm::StringRef> targetTriple =
       document->getString("target_triple");
   std::optional<llvm::StringRef> interfaceDigest =
@@ -375,8 +382,10 @@ SemanticManifestEnvelopeStatus SemanticManifestEnvelope::load(
   std::optional<llvm::StringRef> payloadDigest =
       document->getString("payload_sha256");
   if (!crateId || !logicalModulePath || !compilerVersion || !interfaceFormat ||
+      !languageEpoch || !encapEpoch ||
       !targetTriple || !interfaceDigest || !closureDigest || !payloadDigest ||
       !validText(*crateId) || !validText(*logicalModulePath) ||
+      !validText(*languageEpoch) || !validText(*encapEpoch) ||
       !validText(*targetTriple) || !isLowerSHA256(*interfaceDigest) ||
       !isLowerSHA256(*closureDigest) || !isLowerSHA256(*payloadDigest))
     return fail(SemanticManifestEnvelopeStatus::InvalidSchema,
@@ -384,6 +393,8 @@ SemanticManifestEnvelopeStatus SemanticManifestEnvelope::load(
 
   if (*compilerVersion != TOKA_COMPILER_INTERFACE_VERSION ||
       *interfaceFormat != TOKA_INTERFACE_FORMAT_VERSION ||
+      *languageEpoch != getActiveLanguageEpoch() ||
+      *encapEpoch != getActiveEncapEpoch() ||
       *targetTriple != expectedTargetTriple ||
       *crateId != expectedModule.CrateId ||
       *logicalModulePath != expectedModule.LogicalModulePath ||

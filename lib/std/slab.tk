@@ -42,8 +42,8 @@ impl SlabID {
     }
 }
 
-fn slab_take_raw_option<T>(nul *storage: [Option<T>]) -> Option<T> {
-    if *storage is null {
+fn slab_take_raw_option<T>(?storage: [Option<T>]) -> Option<T> {
+    if ?storage is null {
         unsafe { libc_abort() }
         unreachable
     } else {

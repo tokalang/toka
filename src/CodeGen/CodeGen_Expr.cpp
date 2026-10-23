@@ -553,8 +553,9 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     auto *varLHS = variableTarget;
     std::string baseName = varLHS->Name;
     while (!baseName.empty() &&
-           (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&' ||
-            baseName[0] == '^' || baseName[0] == '~' || baseName[0] == '!'))
+           (baseName[0] == '*' || baseName[0] == '?' || baseName[0] == '#' ||
+            baseName[0] == '$' || baseName[0] == '&' || baseName[0] == '^' ||
+            baseName[0] == '~' || baseName[0] == '!'))
       baseName = baseName.substr(1);
     while (!baseName.empty() &&
            (baseName.back() == '#' || baseName.back() == '?' ||
@@ -928,7 +929,12 @@ PhysEntity CodeGen::emitAssignment(const Expr *lhsExpr, const Expr *rhsExpr,
     llvm::Value *soulAddr = emitEntityAddr(lhsExpr);
     llvm::Type *destTy = nullptr;
     if (symLHS) {
-      destTy = symLHS->soulType;
+      if (symLHS->morphology == Morphology::Raw && symLHS->soulTypeObj &&
+          symLHS->soulTypeObj->getPointeeType()) {
+        destTy = getLLVMType(symLHS->soulTypeObj->getPointeeType());
+      } else {
+        destTy = symLHS->soulType;
+      }
     } else if (lhsExpr->ResolvedType) {
       // A member has no standalone symbol entry.  Its resolved source type,
       // rather than the RHS literal's default width, determines the payload
@@ -1259,14 +1265,21 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
     if (auto *ve = dynamic_cast<const VariableExpr *>(bin->LHS.get())) {
       std::string baseName = ve->Name;
       while (!baseName.empty() &&
-             (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&'))
+             (baseName[0] == '*' || baseName[0] == '?' || baseName[0] == '#' ||
+              baseName[0] == '$' || baseName[0] == '&'))
         baseName = baseName.substr(1);
       while (!baseName.empty() &&
              (baseName.back() == '#' || baseName.back() == '!'))
         baseName.pop_back();
 
       if (m_Symbols.count(baseName)) {
-        destType = m_Symbols[baseName].soulType;
+        const auto &sym = m_Symbols[baseName];
+        if (sym.morphology == Morphology::Raw && sym.soulTypeObj &&
+            sym.soulTypeObj->getPointeeType()) {
+          destType = getLLVMType(sym.soulTypeObj->getPointeeType());
+        } else {
+          destType = sym.soulType;
+        }
       }
     }
 
@@ -1469,9 +1482,10 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
       if (dynamic_cast<const NullExpr *>(bin->RHS.get())) {
         // Get the base name sans morphology
         std::string baseName = targetVar->Name;
-        while (!baseName.empty() && (baseName[0] == '*' || baseName[0] == '#' ||
-                                     baseName[0] == '&' || baseName[0] == '^' ||
-                                     baseName[0] == '~' || baseName[0] == '!'))
+        while (!baseName.empty() &&
+               (baseName[0] == '*' || baseName[0] == '?' || baseName[0] == '#' ||
+                baseName[0] == '$' || baseName[0] == '&' || baseName[0] == '^' ||
+                baseName[0] == '~' || baseName[0] == '!'))
           baseName = baseName.substr(1);
         while (!baseName.empty() &&
                (baseName.back() == '#' || baseName.back() == '?' ||
@@ -1498,22 +1512,33 @@ PhysEntity CodeGen::genBinaryExpr(const BinaryExpr *expr) {
 
     auto evaluatePeek = [&](const Expr *e) -> llvm::Value * {
       const Expr *target = e;
-      if (auto *u = dynamic_cast<const UnaryExpr *>(e)) {
+      while (auto *u = dynamic_cast<const UnaryExpr *>(target)) {
         if (u->Op == TokenType::Caret || u->Op == TokenType::Tilde ||
             u->Op == TokenType::Star) {
           target = u->RHS.get();
+        } else {
+          break;
         }
       }
       if (auto *v = dynamic_cast<const VariableExpr *>(target)) {
         std::string baseName = v->Name;
         while (!baseName.empty() &&
+               (baseName[0] == '*' || baseName[0] == '?' || baseName[0] == '#' ||
+                baseName[0] == '$' || baseName[0] == '&' || baseName[0] == '^' ||
+                baseName[0] == '~' || baseName[0] == '!'))
+          baseName = baseName.substr(1);
+        while (!baseName.empty() &&
                (baseName.back() == '#' || baseName.back() == '?' ||
                 baseName.back() == '!'))
           baseName.pop_back();
 
-        if (m_Symbols.count(baseName) &&
-            m_Symbols[baseName].morphology == Morphology::Shared) {
-          return genExpr(target).load(m_Builder);
+        if (m_Symbols.count(baseName)) {
+          if (m_Symbols[baseName].morphology == Morphology::Shared) {
+            return genExpr(target).load(m_Builder);
+          }
+          if (m_Symbols[baseName].morphology == Morphology::Raw) {
+            return genExpr(e).load(m_Builder);
+          }
         }
         return getEntityAddr(v->codegenName());
       }
@@ -1960,15 +1985,51 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
     return m_Builder.CreateNot(rhs, "nottmp");
   }
 
-  // [Constitution 1.3] Morphology symbols: *p (Raw Pointer Identity)
+  // [Constitution 1.3] Morphology symbols: *p / ?p / **p / ?*p (Raw Pointer Identity)
   if (unary->Op == TokenType::Star) {
-    // A handle is something that contains the pointer (Unique/Shared/Reference)
+    const Expr *innerRHS = unary->RHS.get();
+    while (auto *innerUnary = dynamic_cast<const UnaryExpr *>(innerRHS)) {
+      if (innerUnary->Op == TokenType::Star)
+        innerRHS = innerUnary->RHS.get();
+      else
+        break;
+    }
+    const auto *baseVar = dynamic_cast<const VariableExpr *>(innerRHS);
+    const auto *rhsUnary = dynamic_cast<const UnaryExpr *>(unary->RHS.get());
+
+    // Case A: K = D + 1 on a raw pointer handle binding (e.g. **#p on 1-layer *#p,
+    // *?#p on 1-layer ?#p, ***#p on 2-layer **#p). The inner chain selected the
+    // handle identity; this outer '*' takes the address of that handle slot.
+    if (!unary->SelectsHandleIdentity && rhsUnary &&
+        rhsUnary->Op == TokenType::Star && rhsUnary->SelectsHandleIdentity &&
+        baseVar) {
+      llvm::Value *identityAddr = emitHandleAddr(baseVar);
+      if (!identityAddr)
+        return nullptr;
+      std::string typeName =
+          unary->ResolvedType ? unary->ResolvedType->toString() : "";
+      return PhysEntity(identityAddr, typeName, m_Builder.getPtrTy(), false);
+    }
+
+    // Case B: Handle selection (K = D on raw pointer binding, or 1-layer *u on
+    // Unique/Shared/Reference handle).
     bool isHandle = false;
-    if (unary->RHS->ResolvedType) {
+    if (unary->SelectsHandleIdentity && baseVar) {
+      isHandle = true;
+    } else if (unary->RHS->ResolvedType) {
       auto t = unary->RHS->ResolvedType;
-      // Note: We only treat it as a handle if it's a Top-Level pointer
-      // variable/member access.
+      auto countHats = [](std::shared_ptr<toka::Type> ty) {
+        int c = 0;
+        while (ty && (ty->isPointer() || ty->isReference() || ty->isSmartPointer())) {
+          ++c;
+          ty = ty->getPointeeType();
+        }
+        return c;
+      };
+      bool sameDepthAsRHS = !unary->ResolvedType ||
+                            countHats(unary->ResolvedType) == countHats(t);
       if ((t->isPointer() || t->isReference() || t->isSmartPointer()) &&
+          sameDepthAsRHS &&
           (dynamic_cast<const VariableExpr *>(unary->RHS.get()) ||
            dynamic_cast<const MemberExpr *>(unary->RHS.get()))) {
         isHandle = true;
@@ -1976,19 +2037,28 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
     }
 
     if (isHandle) {
-      llvm::Value *identityAddr = emitHandleAddr(unary->RHS.get());
+      const Expr *handleTarget =
+          (unary->SelectsHandleIdentity && baseVar) ? baseVar : unary->RHS.get();
+      llvm::Value *identityAddr = emitHandleAddr(handleTarget);
       if (!identityAddr)
         return nullptr;
-      if (unary->RHS->ResolvedType && unary->RHS->ResolvedType->isSharedPtr()) {
-        std::string typeName = unary->RHS->ResolvedType ? unary->RHS->ResolvedType->toString() : "";
+      if (handleTarget->ResolvedType && handleTarget->ResolvedType->isSharedPtr()) {
+        std::string typeName =
+            unary->ResolvedType ? unary->ResolvedType->toString()
+                                : handleTarget->ResolvedType->toString();
         return PhysEntity(identityAddr, typeName, m_Builder.getPtrTy(), false);
       }
       llvm::Type *ptrTy = m_Builder.getPtrTy();
-      if (unary->RHS->ResolvedType)
-        ptrTy = getLLVMType(unary->RHS->ResolvedType);
+      if (unary->ResolvedType)
+        ptrTy = getLLVMType(unary->ResolvedType);
+      else if (handleTarget->ResolvedType)
+        ptrTy = getLLVMType(handleTarget->ResolvedType);
       llvm::Value *val = m_Builder.CreateLoad(ptrTy, identityAddr, "raw.ident");
       std::string typeName =
-          unary->RHS->ResolvedType ? unary->RHS->ResolvedType->toString() : "";
+          unary->ResolvedType ? unary->ResolvedType->toString()
+                              : (handleTarget->ResolvedType
+                                     ? handleTarget->ResolvedType->toString()
+                                     : "");
       return PhysEntity(val, typeName, ptrTy, false);
     } else {
       // It's a value (like raw[start] or a simple local i32). *p is the
@@ -1997,7 +2067,9 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
       if (!addr)
         return nullptr;
       std::string typeName = "";
-      if (unary->RHS->ResolvedType)
+      if (unary->ResolvedType)
+        typeName = unary->ResolvedType->toString();
+      else if (unary->RHS->ResolvedType)
         typeName = "*" + unary->RHS->ResolvedType->toString();
       return PhysEntity(addr, typeName, addr->getType(), false);
     }
@@ -2059,8 +2131,9 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
     llvm::Type *handleTy = nullptr;
     if (auto *v = dynamic_cast<const VariableExpr *>(unary->RHS.get())) {
       std::string baseName = v->Name;
-      while (!baseName.empty() && (baseName[0] == '*' || baseName[0] == '^' ||
-                                   baseName[0] == '~' || baseName[0] == '&'))
+      while (!baseName.empty() &&
+             (baseName[0] == '*' || baseName[0] == '?' || baseName[0] == '^' ||
+              baseName[0] == '~' || baseName[0] == '&'))
         baseName = baseName.substr(1);
       if (m_Symbols.count(baseName)) {
         TokaSymbol &sym = m_Symbols[baseName];
@@ -2147,8 +2220,9 @@ PhysEntity CodeGen::genUnaryExpr(const UnaryExpr *unary) {
     llvm::Type *handleTy = nullptr;
     if (auto *v = dynamic_cast<const VariableExpr *>(unary->RHS.get())) {
       std::string baseName = v->Name;
-      while (!baseName.empty() && (baseName[0] == '*' || baseName[0] == '^' ||
-                                   baseName[0] == '~' || baseName[0] == '&'))
+      while (!baseName.empty() &&
+             (baseName[0] == '*' || baseName[0] == '?' || baseName[0] == '^' ||
+              baseName[0] == '~' || baseName[0] == '&'))
         baseName = baseName.substr(1);
       if (m_Symbols.count(baseName)) {
         TokaSymbol &sym = m_Symbols[baseName];
@@ -2422,8 +2496,9 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
   // Get the base name (no morphology) for symbol lookup.
   std::string baseName = varName;
   while (!baseName.empty() &&
-         (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&' ||
-          baseName[0] == '^' || baseName[0] == '~' || baseName[0] == '!'))
+         (baseName[0] == '*' || baseName[0] == '?' || baseName[0] == '#' ||
+          baseName[0] == '$' || baseName[0] == '&' || baseName[0] == '^' ||
+          baseName[0] == '~' || baseName[0] == '!'))
     baseName = baseName.substr(1);
   while (!baseName.empty() &&
          (baseName.back() == '#' || baseName.back() == '?' ||
@@ -2468,6 +2543,9 @@ PhysEntity CodeGen::genVariableExpr(const VariableExpr *var) {
     soulType = var->GenericViewDepth ? getLLVMType(var->ResolvedType)
                : exactMorphicTransport && sym->soulTypeObj
                    ? getLLVMType(sym->soulTypeObj)
+               : (sym->morphology == Morphology::Raw && sym->soulTypeObj &&
+                  sym->soulTypeObj->getPointeeType())
+                   ? getLLVMType(sym->soulTypeObj->getPointeeType())
                    : sym->soulType;
   } else {
     // [Fix] Closure Environment Fallback: Retrieve exact type from ShapeDecl
@@ -4086,7 +4164,9 @@ PhysEntity CodeGen::genIfExpr(const IfExpr *ie,
   if (!cond)
     return nullptr;
   emitFullExpressionTemporaryDrops();
-  if (!cond->getType()->isIntegerTy(1)) {
+  if (cond->getType()->isPointerTy()) {
+    cond = m_Builder.CreateIsNotNull(cond, "ifcond");
+  } else if (!cond->getType()->isIntegerTy(1)) {
     cond = m_Builder.CreateICmpNE(
         cond, llvm::ConstantInt::get(cond->getType(), 0), "ifcond");
   }
@@ -4177,18 +4257,28 @@ PhysEntity CodeGen::genGuardExpr(const GuardExpr *guard) {
   if (auto *unary = dynamic_cast<const UnaryExpr *>(guard->Condition.get())) {
     if (unary->Op == TokenType::Caret || unary->Op == TokenType::Star ||
         unary->Op == TokenType::Tilde || unary->Op == TokenType::Ampersand) {
-      llvm::Value *identityAddr = emitHandleAddr(unary->RHS.get());
+      const Expr *innerRHS = unary->RHS.get();
+      while (auto *innerUnary = dynamic_cast<const UnaryExpr *>(innerRHS)) {
+        if (innerUnary->Op == TokenType::Star)
+          innerRHS = innerUnary->RHS.get();
+        else
+          break;
+      }
+      llvm::Value *identityAddr = emitHandleAddr(innerRHS);
       if (identityAddr) {
         llvm::Type *handleTy = nullptr;
-        if (unary->RHS->ResolvedType)
-            handleTy = getLLVMType(unary->RHS->ResolvedType);
+        if (unary->ResolvedType)
+            handleTy = getLLVMType(unary->ResolvedType);
+        else if (innerRHS->ResolvedType)
+            handleTy = getLLVMType(innerRHS->ResolvedType);
         else
             handleTy = m_Builder.getPtrTy();
             
-        if (auto *v = dynamic_cast<const VariableExpr *>(unary->RHS.get())) {
+        if (auto *v = dynamic_cast<const VariableExpr *>(innerRHS)) {
             std::string baseName = v->Name;
-            while (!baseName.empty() && (baseName[0] == '*' || baseName[0] == '^' ||
-                                        baseName[0] == '~' || baseName[0] == '&'))
+            while (!baseName.empty() && (baseName[0] == '*' || baseName[0] == '?' ||
+                                        baseName[0] == '^' || baseName[0] == '~' ||
+                                        baseName[0] == '&'))
                 baseName = baseName.substr(1);
             if (m_Symbols.count(baseName)) {
                 TokaSymbol &sym = m_Symbols[baseName];
@@ -4303,7 +4393,15 @@ PhysEntity CodeGen::genLoopExpr(const LoopExpr *le) {
 
     PhysEntity cond_ent = genExpr(le->Condition.get()).load(m_Builder);
     llvm::Value *cond = cond_ent.load(m_Builder);
+    if (!cond)
+      return nullptr;
     emitFullExpressionTemporaryDrops();
+    if (cond->getType()->isPointerTy()) {
+      cond = m_Builder.CreateIsNotNull(cond, "loopcond");
+    } else if (!cond->getType()->isIntegerTy(1)) {
+      cond = m_Builder.CreateICmpNE(
+          cond, llvm::ConstantInt::get(cond->getType(), 0), "loopcond");
+    }
     m_Builder.CreateCondBr(cond, loopBB, afterBB);
 
     loopBB->insertInto(f);
@@ -4651,11 +4749,12 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
           std::string inner = collTypeName.substr(1, lastSemi - 1);
           elemTy = resolveType(inner, false);
         }
-      } else if (collTypeName[0] == '*' || collTypeName[0] == '^' ||
-                 collTypeName[0] == '&' || collTypeName[0] == '~') {
+      } else if (collTypeName[0] == '*' || collTypeName[0] == '?' ||
+                 collTypeName[0] == '^' || collTypeName[0] == '&' ||
+                 collTypeName[0] == '~') {
         size_t offset = 1;
         if (collTypeName.length() > 1 &&
-            (collTypeName[1] == '?' || collTypeName[1] == '#' ||
+            (collTypeName[1] == '#' || collTypeName[1] == '$' ||
              collTypeName[1] == '!'))
           offset++;
         elemTy = resolveType(collTypeName.substr(offset), false);
@@ -4732,8 +4831,9 @@ PhysEntity CodeGen::genForExpr(const ForExpr *fe) {
 
   std::string vBaseName = vName;
   while (!vBaseName.empty() &&
-         (vBaseName[0] == '*' || vBaseName[0] == '#' || vBaseName[0] == '&' ||
-          vBaseName[0] == '^' || vBaseName[0] == '~' || vBaseName[0] == '!'))
+         (vBaseName[0] == '*' || vBaseName[0] == '?' || vBaseName[0] == '#' ||
+          vBaseName[0] == '$' || vBaseName[0] == '&' || vBaseName[0] == '^' ||
+          vBaseName[0] == '~' || vBaseName[0] == '!'))
     vBaseName = vBaseName.substr(1);
   while (!vBaseName.empty() &&
          (vBaseName.back() == '#' || vBaseName.back() == '?' || vBaseName.back() == '!'))
@@ -4891,8 +4991,9 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
         bindingTypeObj && bindingTypeObj->typeKind == Type::RawPtr;
 
     while (!pName.empty() &&
-           (pName[0] == '*' || pName[0] == '#' || pName[0] == '&' ||
-            pName[0] == '^' || pName[0] == '~' || pName[0] == '!'))
+           (pName[0] == '*' || pName[0] == '?' || pName[0] == '#' ||
+            pName[0] == '$' || pName[0] == '&' || pName[0] == '^' ||
+            pName[0] == '~' || pName[0] == '!'))
       pName = pName.substr(1);
     while (!pName.empty() &&
            (pName.back() == '#' || pName.back() == '?' || pName.back() == '!'))
@@ -4967,7 +5068,7 @@ void CodeGen::genPatternBinding(const MatchArm::Pattern *pat,
     // metadata from it so handle binders cannot retain Direct addressing mode.
     fillSymbolMetadata(sym, bindingTypeObj, val->getType());
     sym.isMorphicValueTransport = pat->IsAbstractWholeValue || (!pName.empty() && pName.front() == '\'');
-    sym.isRebindable = false;
+    sym.isRebindable = pat->Permission.IdentityRebindable;
 
     std::string typeName = "";
     if (bindingTypeObj) {
@@ -5336,7 +5437,7 @@ bool CodeGen::validateNativeSyncOwner(const NativeSyncOwnerWitnessPtr &original,
     if (!p->Complete || p->SourceDigest !=
             "09d9bb383bac77f326d8b4b34fe4f9808e575905d1a092f46b9a3545e4e737be" ||
         p->NativeDeclarationsDigest !=
-            "9ad7d86356a3e7da822b9ff78ce5eb17c315eba280d0b0e55f9ac319d48c87a0" ||
+            "0fb89324c9179ebd98c6655dd47f23d95ad12845884e05898d2eae1cd5e203ab" ||
         !p->SourceModule || p->SourceModule->IsInterface || !p->Owner ||
         !p->Open || !p->Clone || !p->Drop || !p->ReadAt ||
         !p->NativeOpen || !p->NativeRetain || !p->NativeRelease ||
@@ -6899,15 +7000,15 @@ PhysEntity CodeGen::genCallExpr(const CallExpr *call) {
               if (m_Symbols.count(baseName)) {
                  auto &sym = m_Symbols[baseName];
                  if (capturesMorphicHandleIdentity) {
-                     val = getIdentityAddr(ve->codegenName());
+                     val = emitHandleAddr(ve);
                  } else if (sym.mode == AddressingMode::Reference ||
                      (sym.mode == AddressingMode::Pointer && sym.morphology == Morphology::None)) {
                      val = getEntityAddr(ve->codegenName());
                  } else {
-                     val = getIdentityAddr(ve->codegenName());
+                     val = emitHandleAddr(ve);
                  }
               } else {
-                 val = getIdentityAddr(ve->codegenName());
+                 val = emitHandleAddr(ve);
               }
             }
           }
@@ -8319,8 +8420,9 @@ PhysEntity CodeGen::genInitStructExpr(const InitStructExpr *init) {
     int idx = -1;
     for (int i = 0; i < (int)fields.size(); ++i) {
       std::string fn = fields[i];
-      while (!fn.empty() && (fn[0] == '^' || fn[0] == '*' || fn[0] == '&' ||
-                             fn[0] == '#' || fn[0] == '~' || fn[0] == '!'))
+      while (!fn.empty() &&
+             (fn[0] == '^' || fn[0] == '*' || fn[0] == '?' || fn[0] == '&' ||
+              fn[0] == '#' || fn[0] == '$' || fn[0] == '~' || fn[0] == '!'))
         fn = fn.substr(1);
       while (!fn.empty() &&
              (fn.back() == '#' || fn.back() == '?' || fn.back() == '!'))

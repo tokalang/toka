@@ -1955,7 +1955,8 @@ Sema::Slice4CopyRecipe Sema::deriveSlice4CopyRecipe(const ShapeDecl *shape) {
           // real values and must contribute their full types to the recipe.
           if (!variantShell) {
             combine(deriveSlice4CopyRecipeType(
-                toka::Type::fromString(synthesizePhysicalType(member)),
+                toka::Type::fromString(
+                    synthesizePhysicalType(member, !member.Name.empty())),
                 shape));
           }
           for (const auto &submember : member.SubMembers)
@@ -2174,7 +2175,8 @@ void Sema::recordSlice5InterfaceFacts(Module &M) {
     recordField = [&](const ShapeMember &member, const std::string &path,
                       bool isTopStructField) {
       std::string entry = "field_graph: " + typeName + "." + path + " = " +
-                          synthesizePhysicalType(member);
+                          synthesizePhysicalType(
+                              member, isTopStructField && !member.Name.empty());
       if (isTopStructField && shape->Kind == ShapeKind::Struct &&
           getActiveEncapEpoch() == "0.19") {
         const char *visStr = member.Vis == Visibility::Public
@@ -4542,11 +4544,20 @@ void Sema::registerGlobals(Module &M) {
                                      synthesizePhysicalType(*v));
       validateHandleGrammar(getLoc(v), globalInfo.TypeObj);
       globalInfo.IsRebindable = v->IsRebindable;
-      globalInfo.Permission = BindingPermission::fromLegacy(
-          v->IsRawPointer, v->IsUnique, v->IsShared, v->IsReference,
-          v->IsRebindable, v->IsPointerNullable, v->IsRebindBlocked,
-          v->IsValueMutable, v->IsValueNullable, v->IsValueBlocked,
-          v->IsMorphicExempt);
+      globalInfo.Permission = v->Permission;
+      if (globalInfo.Permission.HandleLayers.empty() &&
+          (v->IsRawPointer || v->IsUnique || v->IsShared || v->IsReference)) {
+        globalInfo.Permission = BindingPermission::fromLegacy(
+            v->IsRawPointer, v->IsUnique, v->IsShared, v->IsReference,
+            v->IsRebindable, v->IsPointerNullable, v->IsRebindBlocked,
+            v->IsValueMutable, v->IsValueNullable, v->IsValueBlocked,
+            v->IsMorphicExempt);
+      } else {
+        globalInfo.Permission.MorphicExempt = v->IsMorphicExempt;
+        globalInfo.Permission.SoulWritable = v->IsValueMutable;
+        globalInfo.Permission.SoulBlocked = v->IsValueBlocked;
+        globalInfo.Permission.syncProjections();
+      }
       globalInfo.CodegenName = v->Name;
       globalInfo.ASTPtr = v;
       globalInfo.DeclLoc = v->Loc;
@@ -6260,6 +6271,7 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
   auto savedRawAddresses = std::move(m_RawAddressBindings);
   m_RawAddressBindings.clear();
   auto savedNarrowing = std::move(m_NarrowedPaths);
+  auto savedMutableAliases = std::move(m_MutableAliasedPaths);
   auto savedFlow = std::move(m_PayloadFlowRestrictedPaths);
   auto savedInvalidated = std::move(m_ReturnSourceInvalidatedRoots);
   auto savedUnknown = std::move(m_ReturnSourceUnknownRoots);
@@ -6315,6 +6327,7 @@ bool Sema::prepareCallableFactory(FunctionDecl *function) {
     m_CallableEnvironments = std::move(savedEnvironments);
     m_RawAddressBindings = std::move(savedRawAddresses);
     m_NarrowedPaths = std::move(savedNarrowing);
+    m_MutableAliasedPaths = std::move(savedMutableAliases);
     m_PayloadFlowRestrictedPaths = std::move(savedFlow);
     m_ReturnSourceInvalidatedRoots = std::move(savedInvalidated);
     m_ReturnSourceUnknownRoots = std::move(savedUnknown);
@@ -6610,6 +6623,10 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   Scope *savedCleanupBoundary = m_FunctionCleanupBoundary;
   m_FunctionCleanupBoundary = CurrentScope;
+  auto savedFuncNarrowed = std::move(m_NarrowedPaths);
+  auto savedFuncMutableAliases = std::move(m_MutableAliasedPaths);
+  m_NarrowedPaths.clear();
+  m_MutableAliasedPaths.clear();
   enterScope(); // Function scope
 
   const FunctionDecl *declarationFunction =
@@ -6722,11 +6739,20 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         Arg.IsValueMutable || morphicPayloadWritable;
 
     Info.IsRebindable = Arg.IsRebindable;
-    Info.Permission = BindingPermission::fromLegacy(
-        Arg.IsRawPointer, Arg.IsUnique, Arg.IsShared, Arg.IsReference,
-        Arg.IsRebindable, Arg.IsPointerNullable, Arg.IsRebindBlocked,
-        declaredPayloadWritable, Arg.IsValueNullable, Arg.IsValueBlocked,
-        Arg.IsMorphicExempt);
+    Info.Permission = Arg.Permission;
+    if (Info.Permission.HandleLayers.empty() &&
+        (Arg.IsRawPointer || Arg.IsUnique || Arg.IsShared || Arg.IsReference)) {
+      Info.Permission = BindingPermission::fromLegacy(
+          Arg.IsRawPointer, Arg.IsUnique, Arg.IsShared, Arg.IsReference,
+          Arg.IsRebindable, Arg.IsPointerNullable, Arg.IsRebindBlocked,
+          declaredPayloadWritable, Arg.IsValueNullable, Arg.IsValueBlocked,
+          Arg.IsMorphicExempt);
+    } else {
+      Info.Permission.MorphicExempt = Arg.IsMorphicExempt;
+      Info.Permission.SoulWritable = declaredPayloadWritable;
+      Info.Permission.SoulBlocked = Arg.IsValueBlocked;
+      Info.Permission.syncProjections();
+    }
     Info.IsMorphicExempt = Arg.IsMorphicExempt; // [NEW]
     Info.IsAbstractWholeValue = Arg.IsAbstractWholeValue;
     Info.GenericContract = Arg.GenericContract;
@@ -7047,7 +7073,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         if (Type::stripMorphology(name) != "self") {
           std::string stripped = name;
           size_t idx = 0;
-          while (idx < stripped.size() && (stripped[idx] == '*' || stripped[idx] == '&' || stripped[idx] == '^' || stripped[idx] == '~' || stripped[idx] == '#')) {
+          while (idx < stripped.size() && (stripped[idx] == '*' || stripped[idx] == '?' || stripped[idx] == '&' || stripped[idx] == '^' || stripped[idx] == '~' || stripped[idx] == '#')) {
             idx++;
           }
           if (stripped.empty() || idx >= stripped.size() || stripped[idx] != '_') {
@@ -7060,7 +7086,7 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         if (Type::stripMorphology(name) != "self") {
           std::string stripped = name;
           size_t idx = 0;
-          while (idx < stripped.size() && (stripped[idx] == '*' || stripped[idx] == '&' || stripped[idx] == '^' || stripped[idx] == '~' || stripped[idx] == '#')) {
+          while (idx < stripped.size() && (stripped[idx] == '*' || stripped[idx] == '?' || stripped[idx] == '&' || stripped[idx] == '^' || stripped[idx] == '~' || stripped[idx] == '#')) {
             idx++;
           }
           if (stripped.empty() || idx >= stripped.size() || stripped[idx] != '_') {
@@ -7075,9 +7101,9 @@ void Sema::checkFunction(FunctionDecl *Fn) {
         std::string stripped = name;
         size_t idx = 0;
         while (idx < stripped.size() &&
-               (stripped[idx] == '*' || stripped[idx] == '&' ||
-                stripped[idx] == '^' || stripped[idx] == '~' ||
-                stripped[idx] == '#')) {
+               (stripped[idx] == '*' || stripped[idx] == '?' ||
+                stripped[idx] == '&' || stripped[idx] == '^' ||
+                stripped[idx] == '~' || stripped[idx] == '#')) {
           idx++;
         }
         if (stripped.empty() || idx >= stripped.size() || stripped[idx] != '_') {
@@ -7156,6 +7182,8 @@ void Sema::checkFunction(FunctionDecl *Fn) {
     Fn->InterfaceLocalBodyValidated = rawSummary.Valid && !HasError;
   }
   exitScope();
+  m_NarrowedPaths = std::move(savedFuncNarrowed);
+  m_MutableAliasedPaths = std::move(savedFuncMutableAliases);
   m_FunctionCleanupBoundary = savedCleanupBoundary;
   m_OutcomePendingCalls = std::move(savedOutcomePendingCalls);
   CurrentFunctionReturnType = savedRet; // [FIX] Restore state

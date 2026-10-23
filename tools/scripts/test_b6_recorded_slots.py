@@ -122,7 +122,7 @@ def main():
         check("released", original.replace("        auto taken", "        free [0] *storage\n        auto taken"), 1)
         check("maybe_written", original.replace("fn main() -> i32 {", "fn scenario(flag: bool) -> i32 {")
               .replace("        storage[0] = cede item", "        if flag { storage[0] = cede item }") + "\nfn main() -> i32 { return 0 }\n", 1)
-        check("alias_write", original.replace("        auto taken", "        auto *other_buffer# = *storage\n        other_buffer[0] = Item(*marker = null, id = 8)\n        auto taken"), 1)
+        check("alias_write", original.replace("        auto taken", "        auto *other_buffer# = *storage\n        other_buffer[0] = Item(?marker = null, id = 8)\n        auto taken"), 1)
         check("loop_may_not_run", original.replace("fn main() -> i32 {", "fn scenario(flag: bool) -> i32 {")
               .replace("        storage[0] = cede item", "        loop flag { storage[0] = cede item; break }") + "\nfn main() -> i32 { return 0 }\n", 1)
         check("match_may_not_write", original.replace("fn main() -> i32 {", "fn scenario(flag: bool) -> i32 {")
@@ -130,9 +130,9 @@ def main():
         check("borrowed_field", original.replace("id: i32)", "id: i32, view: str)")
               .replace("id = 7)", 'id = 7, view = "borrowed")'), 1)
         check("non_null_field", original.replace("    auto item", "    auto integer = 9\n    auto item")
-              .replace("*marker = null", "*marker = &integer as nul *i32"), 1)
+              .replace("?marker = null", "?marker = &integer as ?i32"), 1)
         check("enum_single_raw_payload", """
-shape RawHolder(nul *pointer: i32)
+shape RawHolder(?pointer: i32)
 shape Outcome(Empty | Value(RawHolder))
 fn extract(*storage: [Outcome]) -> Outcome {
     unsafe { return raw_take storage[0] }

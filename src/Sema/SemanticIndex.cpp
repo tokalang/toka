@@ -552,6 +552,7 @@ private:
               typeName(member.ResolvedType, member.Type), id, id, shape->IsPub,
               std::nullopt, fieldContract(member));
           FieldSymbols[shape->Name][member.Name] = memberID;
+          FieldSymbols[shape->Name][stripped(member.Name)] = memberID;
         }
       }
       for (const auto &trait : module->Traits) {
@@ -812,6 +813,8 @@ private:
     if (shape == FieldSymbols.end())
       return {};
     auto field = shape->second.find(member.Member);
+    if (field == shape->second.end())
+      field = shape->second.find(stripped(member.Member));
     return field == shape->second.end() ? "" : field->second;
   }
 

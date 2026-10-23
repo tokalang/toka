@@ -11,25 +11,25 @@ shape ArenaChunk (
     data: Addr,
     capacity: usize,
     offset#: usize,
-    nul *#next#: ArenaChunk = null
+    ?#next#: ArenaChunk = null
 )
 
 pub shape Arena (
-    nul *#chunks#: ArenaChunk = null,
+    ?#chunks#: ArenaChunk = null,
     default_chunk_size: usize = 65536:usize
 )
 
 impl Arena {
     pub fn new() -> Arena {
         return Arena(
-            *chunks = null,
+            ?chunks = null,
             default_chunk_size = 65536:usize
         )
     }
 
     pub fn new_with_capacity(capacity: usize) -> Arena {
         return Arena(
-            *chunks = null,
+            ?chunks = null,
             default_chunk_size = capacity
         )
     }
@@ -48,9 +48,9 @@ impl Arena {
 
         unsafe {
             // 1. Attempt to find space in existing chunks
-            auto nul *#curr# = self.*chunks
+            auto ?#curr# = self.?chunks
             loop true {
-                auto curr_addr = *curr as Addr
+                auto curr_addr = ?curr as Addr
                 if curr_addr == ADDR0 { break }
                 auto *#live_curr# = curr.unwrap()
 
@@ -60,7 +60,7 @@ impl Arena {
                     live_curr.offset = live_curr.offset + aligned_size
                     return addr
                 }
-                *curr = live_curr.*next
+                ?curr = live_curr.?next
             }
 
             // 2. No chunk has enough space, allocate a new chunk
@@ -80,8 +80,8 @@ impl Arena {
             auto new_chunk_addr = libc_malloc(sizeof(ArenaChunk)) as Addr
             // Preserve nullable storage until the same pointer is checked.
             // The unsafe constructor assumes writability, not initialization.
-            auto nul *candidate# = unsafe (new_chunk_addr as nul *ArenaChunk)
-            if *candidate is null {
+            auto ?candidate# = unsafe (new_chunk_addr as ?ArenaChunk)
+            if ?candidate is null {
                 libc_free(raw_data as *void)
                 return ADDR0
             }
@@ -91,9 +91,9 @@ impl Arena {
             new_chunk.data = raw_data
             new_chunk.capacity = chunk_size
             new_chunk.offset = aligned_size
-            new_chunk.*next = self.*chunks
+            new_chunk.?next = self.?chunks
 
-            self.*chunks = *new_chunk
+            self.?chunks = *new_chunk
             return raw_data
         }
     }
@@ -104,14 +104,14 @@ impl Arena {
      */
     pub fn reset(self#) {
         unsafe {
-            auto nul *#curr# = self.*chunks
+            auto ?#curr# = self.?chunks
             loop true {
-                auto curr_addr = *curr as Addr
+                auto curr_addr = ?curr as Addr
                 if curr_addr == ADDR0 { break }
                 auto *#live_curr# = curr.unwrap()
 
                 live_curr.offset = 0:usize
-                *curr = live_curr.*next
+                ?curr = live_curr.?next
             }
         }
     }
@@ -121,20 +121,20 @@ impl Arena {
      */
     pub fn release(self#) {
         unsafe {
-            auto nul *#curr# = self.*chunks
+            auto ?#curr# = self.?chunks
             loop true {
-                auto curr_addr = *curr as Addr
+                auto curr_addr = ?curr as Addr
                 if curr_addr == ADDR0 { break }
                 auto *#live_curr# = curr.unwrap()
 
-                auto nul *next# = live_curr.*next
+                auto ?next# = live_curr.?next
 
                 libc_free(live_curr.data as *void)
                 unsafe free [1] (*live_curr as *[ArenaChunk])
 
-                *curr = *next
+                ?curr = ?next
             }
-            self.*chunks = null
+            self.?chunks = null
         }
     }
 }
@@ -142,27 +142,27 @@ impl Arena {
 /**
  * Allocate storage for T; no initialized value or Drop ownership is created.
  */
-pub fn alloc_type<T>(arena#: Arena) -> nul *T# <- arena
+pub fn alloc_type<T>(arena#: Arena) -> ?T# <- arena
 where:
     T: morphology raw_extendable
 {
     auto size = sizeof(T)
     auto addr = arena#.alloc_bytes(size)
-    auto nul *result# = unsafe (addr as nul *T)
-    return *result
+    auto ?result# = unsafe (addr as ?T)
+    return ?result
 }
 
 /**
  * Allocate array storage inside the arena chunk pool.
  */
-pub fn alloc_array<T>(arena#: Arena, count: usize) -> nul *T# <- arena
+pub fn alloc_array<T>(arena#: Arena, count: usize) -> ?T# <- arena
 where:
     T: morphology raw_extendable
 {
     auto size = sizeof(T) * count
     auto addr = arena#.alloc_bytes(size)
-    auto nul *result# = unsafe (addr as nul *T)
-    return *result
+    auto ?result# = unsafe (addr as ?T)
+    return ?result
 }
 
 /**
@@ -203,7 +203,7 @@ impl ArenaChunk {
             data = self.data,
             capacity = self.capacity,
             offset = self.offset,
-            *next = self.*next
+            ?next = self.?next
         )
     }
 }

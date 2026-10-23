@@ -13,7 +13,7 @@ pub shape ValuesCursor(
 )
 
 pub shape UnsafeValuesMutCursor(
-    nul *buf#: [i32],
+    ?buf#: [i32],
     done#: bool
 )
 
@@ -42,7 +42,7 @@ impl Values {
     pub fn iter_mut(self#) -> UnsafeValuesMutCursor <- self {
         unsafe {
             return UnsafeValuesMutCursor(
-                *buf = &(self.value) as *[i32],
+                ?buf = &(self.value) as *[i32],
                 done = false
             )
         }
@@ -54,9 +54,13 @@ impl UnsafeValuesMutCursor@MutableBorrowIterator {
 
     pub fn next_mut(self#) -> Option<BorrowedItem> <- self {
         if self.done { return Option<BorrowedItem>::None }
-        self.done = true
-        unsafe {
-            return Option<BorrowedItem>::Some(&(self.buf[0]))
+        if self.?buf == null {
+            return Option<BorrowedItem>::None
+        } else {
+            self.done = true
+            unsafe {
+                return Option<BorrowedItem>::Some(&(self.buf[0]))
+            }
         }
     }
 }

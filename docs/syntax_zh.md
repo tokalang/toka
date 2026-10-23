@@ -88,15 +88,15 @@ counter = 3
 ### 三种缺失语义
 
 Safe nullable payload 与 owning handle 已永久删除：`T?` 报 E0484，
-`nul ^T` / `nul ~T` 报 E0485，`none` 报 E0486，nullable postfix / assertion
-syntax 报 E0487。Parser 识别这些旧拼写仅用于给出迁移诊断；它们不再是
-语言类型或值，也没有 Sema 与 CodeGen 表示。
+`nul ^T` / `nul ~T` 报 E0485，旧 `nul *T` 报 E0488，`none` 报 E0486，nullable
+postfix / assertion syntax（`p?`、`p??`）报 E0487。Parser 识别这些旧拼写仅用于给出
+迁移诊断；它们不再是语言类型或值，也没有 Sema 与 CodeGen 表示。
 
 Toka 将操作未命中、显式零或一个存储，以及物理零地址明确分开：
 
 | 语义域 | 表层写法 | 空状态 | 含义 |
 | :--- | :--- | :--- | :--- |
-| raw may-zero 地址 | `nul *T` | `null` | unsafe / FFI 地址在物理上可能为零 |
+| raw may-zero 地址 | `?T` | `null` | unsafe / FFI 原始地址在物理上可能为零 |
 | raw 非零地址 | `*T` | 无 | 地址保证非零，但解引用仍要求 `unsafe` |
 | 操作未命中 | `T \| miss` | `miss` | 一次操作没有产生 `T` |
 | 通用可选值 | `Option<T>` | `Option<T>::None` | 被存储的值明确具有零或一个的基数 |
@@ -104,16 +104,17 @@ Toka 将操作未命中、显式零或一个存储，以及物理零地址明确
 例如：
 
 ```toka
-auto nul *ptr = null:nul *i32
+auto ?ptr = null:?i32
 auto value = lookup(key) // 返回类型声明为 T | miss
 auto result = Option<i32>::None:Option<i32>
 ```
 
-普通 `*T` 不能由 `null` 构造，不能接收或返回 `null`，也不能与 `null`
-比较。`*T` 可以扩大为 `nul *T`；反向转换必须显式调用经过运行时检查的
-`pointer.unwrap()`。因此，`nul` 是 raw pointer 的物理属性，不是通用的
-nullable 类型构造器；Safe Toka 中 borrow、unique 与 shared handle 永远
-指向有效对象。
+普通 `*T`（即使在 `unsafe` 内）不能由 `null` 构造，不能接收或返回 `null`，也不能与 `null`
+比较。`*T` 可以在最外层指针值层放宽为 `?T`（例如 `**T` 放宽为 `?*T`，而内层 pointee
+可空性保持严格不变）；反向收窄必须显式通过 `guard ?ptr`、`if ?ptr != null` 或经过运行时检查的
+`(?ptr).unwrap()`。因此，`?` 是 raw pointer 专属的物理可空帽（可与 `*`、`#` 组成多层纯 raw
+帽链如 `**T`、`*?T`、`?*T`、`??T`、`?#T`），不是通用的 nullable 类型构造器；Safe Toka 中
+borrow、unique 与 shared handle 永远指向有效对象。
 
 如果持久缺席的原因有意义，应使用名义状态，并让操作未命中保持独立：
 
@@ -1013,7 +1014,7 @@ println("x={}, y={}", x, y)
 
 ```toka
 extern fn sleep(seconds: i32) -> i32
-extern fn libc_free(nul *ptr: void) -> void
+extern fn libc_free(?ptr: void) -> void
 ```
 
 原始分配与释放是显式 unsafe 操作。
@@ -1026,7 +1027,7 @@ unsafe free *node
 ```
 
 内建 `alloc` 是不可失败语义的非零分配操作：分配失败会终止执行，而不会返回
-零地址 `*T`。可失败的原生分配器必须把结果声明为 `nul *T`（例如
+零地址 `*T`。可失败的原生分配器必须把结果声明为 `?T`（例如
 `libc_malloc`），调用方必须显式检查或 unwrap。
 
 指针转换使用 `as`。

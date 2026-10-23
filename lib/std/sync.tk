@@ -136,9 +136,9 @@ fn __sync_mutex_acquire<T: @Send>(owner: Mutex<T>) -> Result<MutexLock<T>, Error
     }
     unsafe {
         auto *slot# = sync_writable_storage<[T]>(owner.data_ptr)
-        auto nul *token = null:nul *byte
+        auto ?token = null:?byte
         return Result<MutexLock<T>, Error>::Ok(MutexLock<T>(
-            handle = owner.handle, &data = &(slot[0]), *thread_token = *token))
+            handle = owner.handle, &data = &(slot[0]), ?thread_token = ?token))
     }
 }
 
@@ -149,9 +149,9 @@ fn __sync_rw_read<T: @{Send, Sync}>(owner: RwMutex<T>) -> Result<RwReadLock<T>, 
     }
     unsafe {
         auto *slot = owner.data_ptr as *[T]
-        auto nul *token = null:nul *byte
+        auto ?token = null:?byte
         return Result<RwReadLock<T>, Error>::Ok(RwReadLock<T>(
-            handle = owner.handle, &data = &(slot[0]), *thread_token = *token))
+            handle = owner.handle, &data = &(slot[0]), ?thread_token = ?token))
     }
 }
 
@@ -162,9 +162,9 @@ fn __sync_rw_write<T: @{Send, Sync}>(owner: RwMutex<T>) -> Result<RwWriteLock<T>
     }
     unsafe {
         auto *slot# = sync_writable_storage<[T]>(owner.data_ptr)
-        auto nul *token = null:nul *byte
+        auto ?token = null:?byte
         return Result<RwWriteLock<T>, Error>::Ok(RwWriteLock<T>(
-            handle = owner.handle, &data = &(slot[0]), *thread_token = *token))
+            handle = owner.handle, &data = &(slot[0]), ?thread_token = ?token))
     }
 }
 
@@ -212,12 +212,12 @@ fn __sync_cond_broadcast<T: @Send>(owner: CondVar<T>) {
 }
 
 fn sync_writable_storage<T>(address: Addr) -> *T# {
-    auto nul *candidate# = unsafe (address as nul *T)
-    if *candidate is null {
+    auto ?candidate# = unsafe (address as ?T)
+    if ?candidate is null {
         unsafe { libc_abort() }
         unreachable
     } else {
-        auto verified = unsafe *candidate as Addr
+        auto verified = unsafe ?candidate as Addr
         auto *result# = unsafe (verified as *T)
         return *result
     }
@@ -285,7 +285,7 @@ impl<T> Mutex<T>@Encap {
 pub shape MutexLock<T: @Send>(
     handle: Addr,
     &data#: T,
-    nul *thread_token: byte
+    ?thread_token: byte
 )
 
 impl<T> MutexLock<T>@Encap {
@@ -357,7 +357,7 @@ impl<T> RwMutex<T>@Encap {
 pub shape RwReadLock<T: @{Send, Sync}>(
     handle: Addr,
     &data: T,
-    nul *thread_token: byte
+    ?thread_token: byte
 )
 
 impl<T> RwReadLock<T>@Encap {
@@ -379,7 +379,7 @@ impl<T: @{Send, Sync}> RwReadLock<T> {
 pub shape RwWriteLock<T: @{Send, Sync}>(
     handle: Addr,
     &data#: T,
-    nul *thread_token: byte
+    ?thread_token: byte
 )
 
 impl<T> RwWriteLock<T>@Encap {

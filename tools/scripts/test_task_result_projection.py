@@ -98,9 +98,9 @@ fn bad() -> async &str {
 }
 fn main() -> i32 { return 0 }
 ''', "E0455"),
-    "unrelated_type": ('''shape TaskHandle<T>(pub nul *#coro_handle: void)
+    "unrelated_type": ('''shape TaskHandle<T>(pub ?#coro_handle: void)
 fn main() -> i32 {
-    auto task = TaskHandle<str>(*coro_handle = null)
+    auto task = TaskHandle<str>(?coro_handle = null)
     auto result = task.wait
     return 0
 }
@@ -174,7 +174,7 @@ fn main() -> i32 { return 0 }
     "mutated_task": (PREFIX + '''
 fn bad(input: str) -> str <- input {
     auto task# = second("unused", input)
-    unsafe { task.*coro_handle = null }
+    unsafe { task.?coro_handle = null }
     return wait_value(task)
 }
 fn main() -> i32 { return 0 }
@@ -353,7 +353,7 @@ def main():
                     _, separator, declarations = text.partition('\n\n')
                     assert separator, text
                     digest = 14695981039346656037
-                    for byte in ('// @encap_epoch 0.19\n' + declarations).encode('utf-8'):
+                    for byte in ('// @language_epoch 0.20\n// @encap_epoch 0.19\n' + declarations).encode('utf-8'):
                         digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
                     text, count = re.subn(
                         r'(?m)^// @meta replay_surface_hash: [0-9a-f]{16}$',

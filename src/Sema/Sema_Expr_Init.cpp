@@ -146,6 +146,18 @@ static bool isFieldInitializerCompatible(
   if (destination->typeKind != toka::Type::RawPtr &&
       (destination->IsNullable || source->IsNullable))
     return false;
+  auto dInner = destinationPointee;
+  auto sInner = sourcePointee;
+  while (dInner && sInner &&
+         (dInner->isPointer() || dInner->isReference()) &&
+         (sInner->isPointer() || sInner->isReference())) {
+    if (dInner->typeKind != sInner->typeKind ||
+        dInner->IsNullable != sInner->IsNullable ||
+        (dInner->IsWritable && !sInner->IsWritable))
+      return false;
+    dInner = dInner->getPointeeType();
+    sInner = sInner->getPointeeType();
+  }
   return (!source->IsNullable || destination->IsNullable) &&
          sourcePointee->isCompatibleWith(*destinationPointee);
 }
@@ -503,6 +515,102 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
     if (Pat->IsAbstractWholeValue && !Pat->IsReference) Info.TypeObj = expectedTypeObj;
     if (auto resolvedBindingType = resolveType(Info.TypeObj, false))
       Info.TypeObj = resolvedBindingType;
+
+    if (!isMorphicExempt && !Pat->IsReference &&
+        ((Info.TypeObj && Info.TypeObj->isRawPointer()) ||
+         Pat->Permission.Morphology == BindingMorphology::Raw)) {
+      std::vector<std::shared_ptr<toka::RawPointerType>> targetRawLayers;
+      std::shared_ptr<toka::Type> rawSoul = Info.TypeObj;
+      while (rawSoul && rawSoul->isRawPointer()) {
+        targetRawLayers.push_back(
+            std::static_pointer_cast<toka::RawPointerType>(rawSoul));
+        rawSoul = rawSoul->getPointeeType();
+      }
+      const auto &patLayers = Pat->Permission.HandleLayers;
+      bool reportedNullFlow = false;
+      size_t commonDepth = std::min(patLayers.size(), targetRawLayers.size());
+      for (size_t i = 0; i < commonDepth; ++i) {
+        if (patLayers[i].Morphology == BindingMorphology::Raw &&
+            !patLayers[i].Nullable && targetRawLayers[i]->IsNullable) {
+          auto nonzeroType = targetRawLayers[i]->withAttributes(
+              targetRawLayers[i]->IsWritable, false,
+              targetRawLayers[i]->IsBlocked);
+          error(Pat, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+                nonzeroType->toString());
+          reportedNullFlow = true;
+          break;
+        }
+      }
+      if (!reportedNullFlow) {
+        bool mismatch = (patLayers.size() != targetRawLayers.size());
+        for (size_t i = 0; i < patLayers.size() && !mismatch; ++i) {
+          if (patLayers[i].Morphology != BindingMorphology::Raw ||
+              patLayers[i].Nullable != targetRawLayers[i]->IsNullable) {
+            mismatch = true;
+          }
+        }
+        if (mismatch) {
+          std::string expectedSigils;
+          for (const auto &l : targetRawLayers)
+            expectedSigils += l->IsNullable ? "?" : "*";
+          if (expectedSigils.empty())
+            expectedSigils = "*";
+          std::string cleanPatName = toka::Type::stripMorphology(Pat->Name);
+          DiagnosticEngine::report(
+              getLoc(Pat), DiagID::ERR_POINTER_SIGIL_MISSING, cleanPatName,
+              Info.TypeObj ? Info.TypeObj->toString() : T, expectedSigils,
+              cleanPatName);
+          HasError = true;
+        } else {
+          bool innerWriteElevation = false;
+          for (size_t i = 1; i < patLayers.size(); ++i) {
+            if (patLayers[i].Rebindable && !targetRawLayers[i]->IsWritable) {
+              innerWriteElevation = true;
+              break;
+            }
+          }
+          if (innerWriteElevation) {
+            std::string expectedChain;
+            for (const auto &l : patLayers) {
+              expectedChain += l.Nullable ? "?" : "*";
+              if (l.Rebindable)
+                expectedChain += "#";
+              else if (l.Blocked)
+                expectedChain += "$";
+            }
+            if (rawSoul) {
+              std::shared_ptr<toka::Type> soulWithAttr = rawSoul->withAttributes(
+                  bindingPayloadWritable, rawSoul->IsNullable,
+                  Pat->IsValueBlocked || rawSoul->IsBlocked);
+              expectedChain += soulWithAttr->toString();
+            }
+            DiagnosticEngine::report(
+                getLoc(Pat), DiagID::ERR_INIT_TYPE_MISMATCH, expectedChain,
+                Info.TypeObj ? Info.TypeObj->toString() : T);
+            HasError = true;
+          }
+          if (rawSoul) {
+            std::shared_ptr<toka::Type> rebuilt = rawSoul->withAttributes(
+                bindingPayloadWritable, rawSoul->IsNullable,
+                Pat->IsValueBlocked || rawSoul->IsBlocked);
+            for (size_t idx = patLayers.size(); idx > 0; --idx) {
+              size_t i = idx - 1;
+              auto layer = std::make_shared<toka::RawPointerType>(rebuilt);
+              layer->IsNullable = targetRawLayers[i]->IsNullable;
+              layer->IsWritable =
+                  (i == 0)
+                      ? patLayers[i].Rebindable
+                      : (patLayers[i].Rebindable && targetRawLayers[i]->IsWritable);
+              layer->IsBlocked =
+                  patLayers[i].Blocked || targetRawLayers[i]->IsBlocked;
+              rebuilt = layer;
+            }
+            Info.TypeObj = rebuilt;
+          }
+        }
+      }
+    }
+
     // CodeGen must receive the exact semantic type of a fresh binder.  The
     // enclosing payload type is insufficient for handle patterns because it
     // loses the binder's addressing mode and soul metadata.
@@ -534,7 +642,25 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
       }
     }
 
-    if (Info.TypeObj) {
+    if (!Pat->Permission.HandleLayers.empty()) {
+      Info.Permission = Pat->Permission;
+      if (!Pat->IsReference && Info.TypeObj && Info.TypeObj->isRawPointer()) {
+        std::shared_ptr<toka::Type> cur = Info.TypeObj;
+        for (size_t li = 0;
+             li < Info.Permission.HandleLayers.size() && cur &&
+             cur->isRawPointer();
+             ++li) {
+          Info.Permission.HandleLayers[li].Nullable = cur->IsNullable;
+          Info.Permission.HandleLayers[li].Rebindable = cur->IsWritable;
+          Info.Permission.HandleLayers[li].Blocked = cur->IsBlocked;
+          cur = cur->getPointeeType();
+        }
+      }
+      Info.Permission.SoulWritable = bindingPayloadWritable;
+      Info.Permission.SoulBlocked = Pat->IsValueBlocked;
+      Info.Permission.syncProjections();
+      Info.IsRebindable = Info.Permission.IdentityRebindable;
+    } else if (Info.TypeObj) {
       switch (Info.TypeObj->typeKind) {
       case toka::Type::UniquePtr:
         Info.Permission.Morphology = BindingMorphology::Unique;
@@ -714,7 +840,9 @@ void Sema::checkPattern(MatchArm::Pattern *Pat, const std::string &TargetType,
             if (str.find('^') != std::string::npos) return MorphKind::Unique;
             if (str.find('~') != std::string::npos) return MorphKind::Shared;
             if (str.find('&') != std::string::npos) return MorphKind::Ref;
-            if (str.find('*') != std::string::npos) return MorphKind::Raw;
+            if (str.find('*') != std::string::npos ||
+                str.find('?') != std::string::npos)
+              return MorphKind::Raw;
             return MorphKind::None;
           };
 
@@ -1315,13 +1443,16 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       for (const auto& member : Init->Members) {
         if (member.first != ".." && member.first != "*") {
           explicitlyProvided.insert(member.first);
+          explicitlyProvided.insert(toka::Type::stripMorphology(member.first));
         }
       }
 
       for (const auto &defField : SD->Members) {
         if (!explicitlyProvided.count(defField.Name) &&
+            !explicitlyProvided.count(toka::Type::stripMorphology(defField.Name)) &&
             !explicitlyProvided.count("^" + defField.Name) &&
             !explicitlyProvided.count("*" + defField.Name) &&
+            !explicitlyProvided.count("?" + defField.Name) &&
             !explicitlyProvided.count("~" + defField.Name) &&
             !explicitlyProvided.count("&" + defField.Name) &&
             !explicitlyProvided.count("^?" + defField.Name)) {
@@ -1337,7 +1468,12 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
           std::string prefix = "";
           if (memberTypeObj->isUniquePtr()) prefix = "^";
           else if (memberTypeObj->isSharedPtr()) prefix = "~";
-          else if (memberTypeObj->isRawPointer()) prefix = "*";
+          else if (memberTypeObj->isRawPointer()) {
+            for (auto cur = memberTypeObj; cur && cur->isRawPointer();
+                 cur = cur->getPointeeType()) {
+              prefix += cur->IsNullable ? "?" : "*";
+            }
+          }
           else if (memberTypeObj->isReference()) prefix = "&";
 
           auto memberAccess = std::make_unique<MemberExpr>(cloneNode(spreadNode->Base), prefix + defField.Name);
@@ -1451,12 +1587,14 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       continue;
     }
 
-    if (providedFields.count(pair.first)) {
+    const std::string strippedFirst = toka::Type::stripMorphology(pair.first);
+    if (providedFields.count(pair.first) || providedFields.count(strippedFirst)) {
       DiagnosticEngine::report(getLoc(Init), DiagID::ERR_DUPLICATE_FIELD,
                                pair.first);
       HasError = true;
     }
     providedFields.insert(pair.first);
+    providedFields.insert(strippedFirst);
 
     bool fieldFound = false;
     const ShapeMember *pDefMember = nullptr;
@@ -1497,11 +1635,41 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
       if (pair.first.find('^') != std::string::npos) providedMorph = MorphKind::Unique;
       else if (pair.first.find('~') != std::string::npos) providedMorph = MorphKind::Shared;
       else if (pair.first.find('&') != std::string::npos) providedMorph = MorphKind::Ref;
-      else if (pair.first.find('*') != std::string::npos) providedMorph = MorphKind::Raw;
+      else if (pair.first.find('*') != std::string::npos ||
+               pair.first.find('?') != std::string::npos)
+        providedMorph = MorphKind::Raw;
 
       MorphKind expectedMorph = morphKindFromType(memberTypeObj);
 
       checkStrictMorphology(Init, expectedMorph, providedMorph, pDefMember->Name);
+      if (expectedMorph == MorphKind::Raw && providedMorph == MorphKind::Raw &&
+          memberTypeObj && memberTypeObj->isRawPointer()) {
+        std::string providedHats;
+        for (char c : pair.first) {
+          if (c == '*' || c == '?')
+            providedHats += c;
+          else if (c == '#' || c == '$')
+            continue;
+          else
+            break;
+        }
+        std::string expectedHats;
+        const size_t maxExpectedLayers =
+            (SD && SD->InstantiationTemplate &&
+             !pDefMember->Permission.HandleLayers.empty())
+                ? pDefMember->Permission.HandleLayers.size()
+                : std::numeric_limits<size_t>::max();
+        for (auto cur = memberTypeObj;
+             cur && cur->isRawPointer() &&
+             expectedHats.size() < maxExpectedLayers;
+             cur = cur->getPointeeType()) {
+          expectedHats += cur->IsNullable ? "?" : "*";
+        }
+        if (providedHats != expectedHats) {
+          error(Init, DiagID::ERR_MORPHOLOGY_MISMATCH, expectedHats,
+                providedHats.empty() ? "value" : providedHats);
+        }
+      }
     }
 
     bool rejectedAliasField = false;
@@ -1519,6 +1687,11 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
     m_SuppressRejectedAliasInvalidation = rejectedAliasField;
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
+    if (memberTypeObj && memberTypeObj->isRawPointer() &&
+        isUnnarrowedBareNullableRawExpr(pair.second.get())) {
+      error(Init, DiagID::ERR_MORPHOLOGY_MISMATCH,
+            memberTypeObj->IsNullable ? "?" : "*", "value");
+    }
     Init->MemberTransfers[i] =
         qualifyAggregateTransfer(pair.second.get(), memberTypeObj);
     m_SuppressRejectedAliasInvalidation = oldSuppressAliasInvalidation;
@@ -1651,8 +1824,10 @@ Sema::checkStructInit(InitStructExpr *Init, ShapeDecl *SD,
   // Missing fields check for struct and enum-payload records
   for (const auto &defField : SD->Members) {
     if (!providedFields.count(defField.Name) &&
+        !providedFields.count(toka::Type::stripMorphology(defField.Name)) &&
         !providedFields.count("^" + defField.Name) &&
         !providedFields.count("*" + defField.Name) &&
+        !providedFields.count("?" + defField.Name) &&
         !providedFields.count("~" + defField.Name) &&
         !providedFields.count("&" + defField.Name) &&
         !providedFields.count("^?" + defField.Name)) {
@@ -1820,11 +1995,41 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
       if (pair.first.find('^') != std::string::npos) providedMorph = MorphKind::Unique;
       else if (pair.first.find('~') != std::string::npos) providedMorph = MorphKind::Shared;
       else if (pair.first.find('&') != std::string::npos) providedMorph = MorphKind::Ref;
-      else if (pair.first.find('*') != std::string::npos) providedMorph = MorphKind::Raw;
+      else if (pair.first.find('*') != std::string::npos ||
+               pair.first.find('?') != std::string::npos)
+        providedMorph = MorphKind::Raw;
 
       MorphKind expectedMorph = morphKindFromType(memberTypeObj);
 
       checkStrictMorphology(Init, expectedMorph, providedMorph, pDefMember->Name);
+      if (expectedMorph == MorphKind::Raw && providedMorph == MorphKind::Raw &&
+          memberTypeObj && memberTypeObj->isRawPointer()) {
+        std::string providedHats;
+        for (char c : pair.first) {
+          if (c == '*' || c == '?')
+            providedHats += c;
+          else if (c == '#' || c == '$')
+            continue;
+          else
+            break;
+        }
+        std::string expectedHats;
+        const size_t maxExpectedLayers =
+            (SD && SD->InstantiationTemplate &&
+             !pDefMember->Permission.HandleLayers.empty())
+                ? pDefMember->Permission.HandleLayers.size()
+                : std::numeric_limits<size_t>::max();
+        for (auto cur = memberTypeObj;
+             cur && cur->isRawPointer() &&
+             expectedHats.size() < maxExpectedLayers;
+             cur = cur->getPointeeType()) {
+          expectedHats += cur->IsNullable ? "?" : "*";
+        }
+        if (providedHats != expectedHats) {
+          error(Init, DiagID::ERR_MORPHOLOGY_MISMATCH, expectedHats,
+                providedHats.empty() ? "value" : providedHats);
+        }
+      }
     }
 
     recordExplicitCedeStage0NonCallPlan(
@@ -1833,6 +2038,11 @@ Sema::checkVariantInit(InitStructExpr *Init, ShapeDecl *SD,
         TransferEligibilityContext::AggregateMember, "aggregate");
     std::shared_ptr<toka::Type> exprTypeObj =
         checkExpr(pair.second.get(), memberTypeObj);
+    if (memberTypeObj && memberTypeObj->isRawPointer() &&
+        isUnnarrowedBareNullableRawExpr(pair.second.get())) {
+      error(Init, DiagID::ERR_MORPHOLOGY_MISMATCH,
+            memberTypeObj->IsNullable ? "?" : "*", "value");
+    }
     Init->MemberTransfers.assign(Init->Members.size(),
                                  AggregateTransferKind::Unqualified);
     Init->MemberTransfers[0] =

@@ -28,7 +28,7 @@ impl Counter {
 // Module-level factory functions removed. using static methods.
 
 pub shape Vec<T> (
-    nul *#buf#: [T] = null as nul *[T],
+    ?#buf#: [T] = null as ?[T],
     len#: usize = 0,
     cap#: usize = 0
 )
@@ -42,12 +42,12 @@ impl<T: @Sync> Vec<T> @Sync {}
 // Callers retain bounds/length responsibility; no reference to an unwritten byte
 // is formed. This concrete byte helper does not widen generic raw element APIs.
 pub fn writable_byte_storage(buffer#: Vec<u8>) -> *u8# <- buffer {
-    auto nul *storage# = buffer.*buf
-    if *storage is null {
+    auto ?storage# = buffer.?buf
+    if ?storage is null {
         unsafe { libc_abort() }
         unreachable
     } else {
-        auto *nonnull# = (*storage).unwrap()
+        auto *nonnull# = (?storage).unwrap()
         return *nonnull as *u8#
     }
 }
@@ -59,15 +59,17 @@ impl<T: @Dup> Vec<T> {
     pub fn clone(self) -> Vec<T> {
         unsafe {
             if self.cap == 0 {
-                return Vec<T>(*buf=null, len=0, cap=0)
+                return Vec<T>(?buf=null, len=0, cap=0)
             }
             auto *new_buf# = unsafe alloc [self.cap] T
-            auto ctr# = Counter(val=0)
-            loop ctr.val < self.len {
-                new_buf[ctr.val] = self.buf[ctr.val].dup()
-                ctr#.inc()
+            if self.?buf != null {
+                auto ctr# = Counter(val=0)
+                loop ctr.val < self.len {
+                    new_buf[ctr.val] = self.buf[ctr.val].dup()
+                    ctr#.inc()
+                }
             }
-            return Vec<T>(*buf=*new_buf, len=self.len, cap=self.cap)
+            return Vec<T>(?buf=*new_buf, len=self.len, cap=self.cap)
         }
     }
 }
@@ -87,7 +89,11 @@ impl<T: @Dup> Vec<T> {
              if index >= self.len {
                  libc_exit(1)
              }
-             return self.buf[index].dup()
+             if self.?buf != null {
+                 return self.buf[index].dup()
+             }
+             libc_abort()
+             unreachable
         }
     }
 
@@ -102,7 +108,10 @@ impl<T: @Dup> Vec<T> {
              if index >= self.len {
                  return Option<T>::None
              }
-             return Option<T>::Some(self.buf[index].dup())
+             if self.?buf != null {
+                 return Option<T>::Some(self.buf[index].dup())
+             }
+             return Option<T>::None
         }
     }
 
@@ -111,9 +120,9 @@ impl<T: @Dup> Vec<T> {
 impl<T> Vec<T>@Encap {
     fn drop(self#) {
         unsafe {
-            if self.*buf != null {
-                unsafe free [self.len]self.*#buf
-                self.*buf = null
+            if self.?buf != null {
+                unsafe free [self.len]self.?#buf
+                self.?buf = null
             }
         }
     }
@@ -137,7 +146,7 @@ impl<T> Vec<T> {
     // Create empty vector (Static Method)
     pub fn new() -> Vec<T> {
         // Implicit conversation works for assignment/init of pointer variable
-        return Vec<T>(*buf=null, len=0, cap=0)
+        return Vec<T>(?buf=null, len=0, cap=0)
     }
 
     // Create vector with capacity (Static Method)
@@ -149,11 +158,11 @@ impl<T> Vec<T> {
     {
         unsafe {
             if capacity == 0 {
-                return Vec<T>(*buf=null, len=0, cap=0)
+                return Vec<T>(?buf=null, len=0, cap=0)
             }
             // alloc array syntax
             auto *_new_buf# = unsafe alloc [capacity] T
-            return Vec<T>(*buf=*_new_buf, len=0, cap=capacity)
+            return Vec<T>(?buf=*_new_buf, len=0, cap=capacity)
         }
     }
 
@@ -164,13 +173,13 @@ impl<T> Vec<T> {
         return <- self.external
     {
         unsafe {
-            auto nul *taken_buf = self.*buf
+            auto ?taken_buf = self.?buf
             auto taken_len = self.len
             auto taken_cap = self.cap
-            self.*buf = null
+            self.?buf = null
             self.len = 0
             self.cap = 0
-            return Vec<T>(*buf = *taken_buf, len = taken_len, cap = taken_cap)
+            return Vec<T>(?buf = ?taken_buf, len = taken_len, cap = taken_cap)
         }
     }
 
@@ -186,7 +195,11 @@ impl<T> Vec<T> {
             }
         }
         unsafe {
-            return &self.buf[index]
+            if self.?buf != null {
+                return &self.buf[index]
+            }
+            libc_abort()
+            unreachable
         }
     }
 
@@ -202,7 +215,11 @@ impl<T> Vec<T> {
             }
         }
         unsafe {
-            return &self.buf[index]
+            if self.?buf != null {
+                return &self.buf[index]
+            }
+            libc_abort()
+            unreachable
         }
     }
     
@@ -210,9 +227,9 @@ impl<T> Vec<T> {
     // only when cap is zero), an initialized prefix of exactly len complete
     // elements, no conflicting live borrow, and sole cleanup responsibility.
     // The compiler does not infer these facts from the raw address.
-    pub unsafe fn from_raw(nul *buf: [T], len: usize, cap: usize) -> Vec<T> {
+    pub unsafe fn from_raw(?buf: [T], len: usize, cap: usize) -> Vec<T> {
         return Vec<T>(
-            *buf=*buf,
+            ?buf=?buf,
             len=len,
             cap=cap
         )
@@ -220,23 +237,23 @@ impl<T> Vec<T> {
 
     pub unsafe fn unsafe_forget(self#) {
         unsafe {
-            self.*buf = null
+            self.?buf = null
             self.cap = 0
             self.len = 0
         }
     }
 
-    pub unsafe fn unsafe_as_raw(self) -> nul *[T] {
-        return self.*buf
+    pub unsafe fn unsafe_as_raw(self) -> ?[T] {
+        return self.?buf
     }
 
     // Caller is responsible for bounds, initialized slots and retirement.
     pub unsafe fn unsafe_storage(self) -> *[T] {
-        return self.*buf.unwrap()
+        return self.?buf.unwrap()
     }
 
     pub unsafe fn unsafe_storage_mut(self#) -> *[T]# {
-        return self.*#buf.unwrap()
+        return self.?#buf.unwrap()
     }
 
     // Caller proves index names an initialized slot and keeps the Vec alive
@@ -245,18 +262,24 @@ impl<T> Vec<T> {
     effects:
         &item <- self
     {
-        unsafe { return &self.buf[index] }
+        unsafe {
+            if self.?buf != null {
+                return &self.buf[index]
+            }
+            libc_abort()
+            unreachable
+        }
     }
 
-    pub unsafe fn unsafe_into_raw(self#) -> nul *[T]# {
+    pub unsafe fn unsafe_into_raw(self#) -> ?[T]# {
         unsafe {
             // Nullify buffer to prevent drop from freeing it
             // This is used when ownership is manually transferred
-            auto nul *ptr# = self.*buf
-            self.*buf = null
+            auto ?ptr# = self.?buf
+            self.?buf = null
             self.cap = 0
             self.len = 0
-            return *ptr
+            return ?ptr
         }
     }
 
@@ -278,9 +301,11 @@ where:
 {
     pub fn clear(self#) {
         unsafe {
-            loop self.len > 0 {
-                self.len -= 1
-                auto _old = Option<T>::Some(cede self.buf[self.len])
+            if self.?buf != null {
+                loop self.len > 0 {
+                    self.len -= 1
+                    auto _old = Option<T>::Some(cede self.buf[self.len])
+                }
             }
         }
     }
@@ -299,13 +324,17 @@ where:
             self#.grow()
         }
         unsafe {
-            auto i# = self.len
-            loop i > index {
-                self.buf[i] = cede self.buf[i - 1]
-                i -= 1
+            if self.?buf != null {
+                auto i# = self.len
+                loop i > index {
+                    self.buf[i] = cede self.buf[i - 1]
+                    i -= 1
+                }
+                self.buf[index] = cede val
+                self.len += 1
+            } else {
+                unreachable
             }
-            self.buf[index] = cede val
-            self.len += 1
         }
     }
 
@@ -318,14 +347,18 @@ where:
             return cede outcome
         }
         unsafe {
-            auto ret = Option<T>::Some(cede self.buf[index])
-            auto i# = index
-            loop i < self.len - 1 {
-                self.buf[i] = cede self.buf[i + 1]
-                i += 1
+            if self.?buf != null {
+                auto ret = Option<T>::Some(cede self.buf[index])
+                auto i# = index
+                loop i < self.len - 1 {
+                    self.buf[i] = cede self.buf[i + 1]
+                    i += 1
+                }
+                self.len -= 1
+                return cede ret
             }
-            self.len -= 1
-            return cede ret
+            auto outcome = Option<T>::None
+            return cede outcome
         }
     }
 
@@ -339,9 +372,13 @@ where:
             }
 
             // Pointer indexing handles
-            // *self.buf provides the handle.
-            self.buf[self.len] = cede val
-            self.len += 1
+            // ?self.buf provides the handle.
+            if self.?buf != null {
+                self.buf[self.len] = cede val
+                self.len += 1
+            } else {
+                unreachable
+            }
         }
     }
 
@@ -369,7 +406,7 @@ where:
                 auto *_new_buf# = unsafe alloc [4] T
                 
                 // Fields
-                self.*buf = *_new_buf
+                self.?buf = *_new_buf
                 self.cap = cap
             } else {
                 // Growth case
@@ -377,19 +414,19 @@ where:
                 
                 // Move initialized elements; the old backing allocation is
                 // then released with free[0], so it cannot drop stale copies.
-                auto ctr# = Counter(val=0)
-                loop ctr.val < self.len {
-                    new_buf[ctr.val] = cede self.buf[ctr.val]
-                    ctr#.inc()
-                }
-                
-                // Free old buffer
-                if self.*buf != null {
-                    unsafe free [0]self.*#buf
+                if self.?buf != null {
+                    auto ctr# = Counter(val=0)
+                    loop ctr.val < self.len {
+                        new_buf[ctr.val] = cede self.buf[ctr.val]
+                        ctr#.inc()
+                    }
+                    
+                    // Free old buffer
+                    unsafe free [0]self.?#buf
                 }
                 
                 // Update fields
-                self.*buf = *new_buf
+                self.?buf = *new_buf
                 self.cap = new_cap
             }
         }
@@ -400,9 +437,13 @@ where:
         self <- val
     {
         unsafe {
-             if index < self.len {
-                 auto _old = Option<T>::Some(cede self.buf[index])
-                 self.buf[index] = cede val
+             if index < self.len && self.?buf != null {
+                 if self.?buf != null {
+                     auto _old = Option<T>::Some(cede self.buf[index])
+                     self.buf[index] = cede val
+                 } else {
+                     auto _unused = Option<T>::Some(cede val)
+                 }
              } else {
                  auto _unused = Option<T>::Some(cede val)
              }
@@ -419,7 +460,11 @@ where:
 {
     pub fn appended(cede self#, val: T) -> Vec<T> <- self | val {
         if self.len == self.cap { self#.grow() }
-        unsafe { self.buf[self.len] = val }
+        unsafe {
+            if self.?buf != null {
+                self.buf[self.len] = val
+            }
+        }
         self.len += 1
         return cede self
     }
@@ -429,13 +474,15 @@ where:
         if capacity == 0 { capacity = 4:usize }
         unsafe {
             auto *buffer# = alloc [capacity] T
-            auto index# = 0:usize
-            loop index < self.len {
-                buffer[index] = self.buf[index]
-                index += 1
+            if self.?buf != null {
+                auto index# = 0:usize
+                loop index < self.len {
+                    buffer[index] = self.buf[index]
+                    index += 1
+                }
+                free [0] self.?#buf
             }
-            if self.*buf != null { free [0] self.*#buf }
-            self.*buf = *buffer
+            self.?buf = *buffer
             self.cap = capacity
         }
     }
@@ -456,10 +503,12 @@ where:
                      self#.grow()
                  }
             }
-            auto i# = self.len
-            loop i < new_len {
-                self.buf[i] = val
-                i += 1
+            if self.?buf != null {
+                auto i# = self.len
+                loop i < new_len {
+                    self.buf[i] = val
+                    i += 1
+                }
             }
             self.len = new_len
         }
@@ -472,7 +521,7 @@ where:
 {
     pub unsafe fn unsafe_get(self, index: usize) -> *T {
         unsafe {
-            auto *ptr = self.*buf.unwrap() as *[T]
+            auto *ptr = self.?buf.unwrap() as *[T]
             // This API returns the slot address, not the complete element
             // value reinterpreted as an address. Bounds remain the caller's
             // unsafe precondition; no element is read or moved here.
@@ -484,7 +533,7 @@ where:
 
     pub unsafe fn unsafe_get_mut(self#, index: usize) -> *T# {
         unsafe {
-            auto *#ptr# = self.*#buf.unwrap() as *[T]
+            auto *#ptr# = self.?#buf.unwrap() as *[T]
             auto address = (*ptr as Addr) + index * sizeof(T)
             auto *#element# = address as *T
             return *element
@@ -499,7 +548,7 @@ pub shape VecIterator<T> (
 )
 
 pub shape VecMutIterator<T> (
-    nul *buf#: [T],
+    ?buf#: [T],
     len#: usize = 0,
     pos#: usize = 0
 )
@@ -544,7 +593,7 @@ impl<T> Vec<T>@Iterable {
     pub fn iter(self) -> Iter <- self {
         unsafe {
             return VecIterator<T>(
-                &buf = (self.*buf as &[T]),
+                &buf = (self.?buf as &[T]),
                 len = self.len,
                 pos = 0
             )
@@ -555,7 +604,7 @@ impl<T> Vec<T>@Iterable {
 impl<T> Vec<T> {
     pub fn iter_mut(self#) -> VecMutIterator<T> <- self {
         return VecMutIterator<T>(
-            *buf = self.*buf,
+            ?buf = self.?buf,
             len = self.len,
             pos = 0
         )
@@ -575,7 +624,10 @@ where:
         auto index = self.pos
         self.pos += 1
         unsafe {
-            return Option<BorrowedItem>::Some(&(self.buf[index]))
+            if self.?buf != null {
+                return Option<BorrowedItem>::Some(&(self.buf[index]))
+            }
+            return Option<BorrowedItem>::None
         }
     }
 }

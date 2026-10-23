@@ -31,13 +31,13 @@ def qualify(build_dir):
         # free instruction. Both destruction and capacity growth use this
         # instruction, so an early release cannot go unnoticed.
         string_source = (ROOT / "lib/core/string.tk").read_text()
-        release = "unsafe free [0]self.*#buf"
+        release = "unsafe free [0]self.?#buf"
         if string_source.count(release) != 2:
             raise RuntimeError("string release sites changed; review instrumentation")
         (library / "core/string.tk").write_text(
-            "extern fn test_buffer_freed(nul *ptr: void) -> void\n" +
+            "extern fn test_buffer_freed(?ptr: void) -> void\n" +
             string_source.replace(release,
-                "test_buffer_freed(self.*buf as nul *void); " + release))
+                "test_buffer_freed(self.?buf as ?void); " + release))
         lists = library / "build/internal/strings.tk"
         list_source = lists.read_text()
         marker = "impl BuildStrings@Encap {}"

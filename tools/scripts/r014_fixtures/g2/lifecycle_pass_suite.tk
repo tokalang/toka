@@ -143,7 +143,7 @@ fn test_fresh_start_cancel() -> async i32 {
     {
         auto r = make_resource(60:i32)
         auto task = forwarded_fresh_start(cede r)
-        auto nul *tcb = task_get_coro_handle<TrackedResource>(task)
+        auto ?tcb = task_get_coro_handle<TrackedResource>(task)
         auto *live = tcb.unwrap()
         toka_task_start(*live)
         auto polls# = 0:i32
@@ -166,7 +166,7 @@ fn test_named_start_cancel() -> async i32 {
     {
         auto r = make_resource(70:i32)
         auto task = forwarded_named_start(cede r)
-        auto nul *tcb = task_get_coro_handle<TrackedResource>(task)
+        auto ?tcb = task_get_coro_handle<TrackedResource>(task)
         auto *live = tcb.unwrap()
         toka_task_start(*live)
         auto polls# = 0:i32
@@ -189,7 +189,7 @@ fn test_fresh_direct_cancel() -> async i32 {
     {
         auto r = make_resource(80:i32)
         auto task = forwarded_fresh_direct(cede r)
-        auto nul *tcb = task_get_coro_handle<TrackedResource>(task)
+        auto ?tcb = task_get_coro_handle<TrackedResource>(task)
         auto *live = tcb.unwrap()
         toka_task_start(*live)
         auto polls# = 0:i32
@@ -212,7 +212,7 @@ fn test_named_direct_cancel() -> async i32 {
     {
         auto r = make_resource(90:i32)
         auto task = forwarded_named_direct(cede r)
-        auto nul *tcb = task_get_coro_handle<TrackedResource>(task)
+        auto ?tcb = task_get_coro_handle<TrackedResource>(task)
         auto *live = tcb.unwrap()
         toka_task_start(*live)
         auto polls# = 0:i32

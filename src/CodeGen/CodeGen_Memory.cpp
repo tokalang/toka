@@ -1113,7 +1113,7 @@ llvm::Value *CodeGen::genFreeStmt(const FreeStmt *fs) {
           std::string vType = m_Symbols[varName].typeName;
           // vType is e.g. *Data or *[10]Data
           if (!vType.empty()) {
-            if (vType[0] == '*') {
+            if (vType[0] == '*' || vType[0] == '?') {
               typeName = vType.substr(1); // Peel pointer
             } else {
               typeName = vType;
@@ -1339,7 +1339,8 @@ CodeGen::MemberObjectInfo CodeGen::resolveMemberObject(const Expr *object,
     if (auto *ve = dynamic_cast<const VariableExpr *>(object)) {
       std::string baseName = ve->Name;
       while (!baseName.empty() &&
-             (baseName[0] == '*' || baseName[0] == '&' || baseName[0] == '#'))
+             (baseName[0] == '*' || baseName[0] == '?' || baseName[0] == '&' ||
+              baseName[0] == '#' || baseName[0] == '$'))
         baseName = baseName.substr(1);
       if (m_Symbols.count(baseName)) {
         const TokaSymbol &sym = m_Symbols[baseName];
@@ -1477,11 +1478,7 @@ llvm::Type *CodeGen::resolveMemberResultType(llvm::Type *baseIrTy,
                                             const std::shared_ptr<Type> &resolvedType) {
   llvm::Type *resultTy = baseIrTy;
   if (resolvedType) {
-    auto soul = resolvedType;
-    if (plan.DerefCount > 0) {
-      soul = soul->getSoulType();
-    }
-    resultTy = getLLVMType(soul);
+    resultTy = getLLVMType(resolvedType);
   }
   return resultTy;
 }
@@ -1751,8 +1748,9 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
 
     // Scrub decorators
     while (!baseName.empty() &&
-           (baseName[0] == '*' || baseName[0] == '#' || baseName[0] == '&' ||
-            baseName[0] == '^' || baseName[0] == '~' || baseName[0] == '!'))
+           (baseName[0] == '*' || baseName[0] == '?' || baseName[0] == '#' ||
+            baseName[0] == '$' || baseName[0] == '&' || baseName[0] == '^' ||
+            baseName[0] == '~' || baseName[0] == '!'))
       baseName = baseName.substr(1);
     while (!baseName.empty() &&
            (baseName.back() == '#' || baseName.back() == '?' ||
@@ -1909,10 +1907,11 @@ llvm::Value *CodeGen::genAddr(const Expr *expr) {
       return m_Builder.CreateInBoundsGEP(sym.soulType, currentBase, indexValue);
     } else {
       // Pointer or Reference: Peel the onion
-      // For Pointer, we need to load 'indirectionLevel' times to get to the
-      // Soul base.
+      // For Raw Pointer in 0.20, bare indexing peels 1 raw layer (plus caller slot if rebindable param).
       // For Reference, it's basically load 1 time.
-      int loads = sym.indirectionLevel;
+      int loads = (sym.morphology == Morphology::Raw)
+                      ? (sym.isCallerHandleSlot ? 2 : 1)
+                      : sym.indirectionLevel;
       if (sym.mode == AddressingMode::Reference && loads == 0)
         loads = 1;
 
@@ -1980,8 +1979,13 @@ llvm::Value *CodeGen::projectSoul(llvm::Value *handle, const TokaSymbol &sym) {
                                 "shared.data_ptr");
   }
 
-  // Raw & Unique: Peeling recursive loads based on indirection level
-  for (int i = 0; i < sym.indirectionLevel; ++i) {
+  // Raw: 0.20 1-layer peeling rule (bare `p` peels 1 raw pointer layer; plus
+  // caller handle slot indirection when `isCallerHandleSlot` is true).
+  // Unique: peel based on indirection level.
+  int peelLoads = (sym.morphology == Morphology::Raw)
+                      ? (sym.isCallerHandleSlot ? 2 : 1)
+                      : sym.indirectionLevel;
+  for (int i = 0; i < peelLoads; ++i) {
     current =
         m_Builder.CreateLoad(m_Builder.getPtrTy(), current, "ptr.peel_soul");
   }
@@ -2152,7 +2156,8 @@ llvm::Value *CodeGen::emitHandleAddr(const Expr *expr) {
     const std::string baseName = Type::stripMorphology(var->codegenName());
     auto symbol = m_Symbols.find(baseName);
     if (identity && symbol != m_Symbols.end() &&
-        symbol->second.capturedHandleSlotNeedsLoad) {
+        (symbol->second.capturedHandleSlotNeedsLoad ||
+         symbol->second.isCallerHandleSlot)) {
       return m_Builder.CreateLoad(m_Builder.getPtrTy(), identity,
                                   baseName + ".captured_handle_slot");
     }

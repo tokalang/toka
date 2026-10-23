@@ -29,7 +29,7 @@ fn main() -> i32 {
     assert(byte_test_live() == 0, "taken result released")
     {
         auto task = produce()
-        __toka_spawn_blocking(task.*coro_handle)
+        __toka_spawn_blocking(task.?coro_handle)
         assert(byte_test_live() == 1, "completed result owned by task")
     }
     assert(byte_test_live() == 0, "unclaimed completed result released")

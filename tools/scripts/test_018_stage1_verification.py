@@ -575,13 +575,14 @@ def make_bodyless_tki_content() -> str:
         "pub fn bodyless_sync_consume(cede h: TaskHandle<Result<i32, CloseError>>) -> i32\n"
     )
     h = 14695981039346656037
-    for b in ("// @encap_epoch 0.19\n" + decls).encode("utf-8"):
+    for b in ("// @language_epoch 0.20\n// @encap_epoch 0.19\n" + decls).encode("utf-8"):
         h ^= b
         h = (h * 1099511628211) & 0xFFFFFFFFFFFFFFFF
     surface_hash = f"{h:016x}"
     header = (
         "// @meta compiler_version: any\n"
-        "// @meta format_version: 6\n"
+        "// @meta format_version: 7\n"
+        "// @meta language_epoch: 0.20\n"
         "// @meta encap_epoch: 0.19\n"
         f"// @meta replay_surface_hash: {surface_hash}\n"
         "// @meta target_triple: any\n"
@@ -828,7 +829,7 @@ fn run_all_7_paths() -> async i32 {
     {
         auto s6 = SessionA(res_guard = make_guard(60:i32), mode = 3:i32, base = 77:i32)
         auto task6 = s6.close()
-        auto nul *tcb6 = task_get_coro_handle<Result<i32, CloseError>>(task6)
+        auto ?tcb6 = task_get_coro_handle<Result<i32, CloseError>>(task6)
         auto *live_tcb6 = tcb6.unwrap()
         toka_task_start(*live_tcb6)
         auto waited6# = 0:i32

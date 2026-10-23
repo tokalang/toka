@@ -1448,7 +1448,9 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
       // Strip ALL morphology to find the core Soul dimension
       while (!soulTypeName.empty() &&
              (soulTypeName[0] == '^' || soulTypeName[0] == '*' ||
-              soulTypeName[0] == '&' || soulTypeName[0] == '~')) {
+              soulTypeName[0] == '?' || soulTypeName[0] == '&' ||
+              soulTypeName[0] == '~' || soulTypeName[0] == '#' ||
+              soulTypeName[0] == '$')) {
         soulTypeName = soulTypeName.substr(1);
       }
       while (!soulTypeName.empty() &&
@@ -1463,7 +1465,8 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
         std::string tn = inferredTypeName;
         // Strip morphology to find base element type
         while (!tn.empty() &&
-               (tn[0] == '*' || tn[0] == '^' || tn[0] == '&' || tn[0] == '#'))
+               (tn[0] == '*' || tn[0] == '?' || tn[0] == '^' || tn[0] == '&' ||
+                tn[0] == '#' || tn[0] == '$'))
           tn = tn.substr(1);
         elemTy = resolveType(tn, false);
       }
@@ -1492,7 +1495,8 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
                        dynamic_cast<const CastExpr *>(var->Init.get())) {
           std::string tn = cast->TargetType;
           while (!tn.empty() &&
-                 (tn[0] == '*' || tn[0] == '^' || tn[0] == '&' || tn[0] == '#'))
+                 (tn[0] == '*' || tn[0] == '?' || tn[0] == '^' || tn[0] == '&' ||
+                  tn[0] == '#' || tn[0] == '$'))
             tn = tn.substr(1);
           elemTy = resolveType(tn, false);
         } else if (auto *call =
@@ -1506,8 +1510,8 @@ llvm::Value *CodeGen::genVariableDecl(const VariableDecl *var) {
 
           if (!retTypeName.empty()) {
             std::string tn = retTypeName;
-            while (!tn.empty() && (tn[0] == '*' || tn[0] == '^' ||
-                                   tn[0] == '&' || tn[0] == '#'))
+            while (!tn.empty() && (tn[0] == '*' || tn[0] == '?' || tn[0] == '^' ||
+                                   tn[0] == '&' || tn[0] == '#' || tn[0] == '$'))
               tn = tn.substr(1);
             elemTy = resolveType(tn, false);
           }
@@ -2283,17 +2287,48 @@ llvm::Value *CodeGen::genDestructuringDecl(const DestructuringDecl *dest) {
         memberIndex < m_Shapes[shapeName]->Members.size()) {
       bindingType = m_Shapes[shapeName]->Members[memberIndex].ResolvedType;
     }
+    if (!v.IsReference && bindingType && bindingType->isRawPointer() &&
+        !v.Permission.HandleLayers.empty()) {
+      std::vector<std::shared_ptr<toka::RawPointerType>> targetRawLayers;
+      std::shared_ptr<toka::Type> rawSoul = bindingType;
+      while (rawSoul && rawSoul->isRawPointer()) {
+        targetRawLayers.push_back(
+            std::static_pointer_cast<toka::RawPointerType>(rawSoul));
+        rawSoul = rawSoul->getPointeeType();
+      }
+      const auto &varLayers = v.Permission.HandleLayers;
+      if (rawSoul && varLayers.size() == targetRawLayers.size()) {
+        std::shared_ptr<toka::Type> rebuilt = rawSoul->withAttributes(
+            v.IsValueMutable, rawSoul->IsNullable,
+            v.IsValueBlocked || rawSoul->IsBlocked);
+        for (size_t idx = varLayers.size(); idx > 0; --idx) {
+          size_t li = idx - 1;
+          auto layer = std::make_shared<toka::RawPointerType>(rebuilt);
+          layer->IsNullable = varLayers[li].Nullable;
+          layer->IsWritable =
+              (li == 0)
+                  ? varLayers[li].Rebindable
+                  : (varLayers[li].Rebindable && targetRawLayers[li]->IsWritable);
+          layer->IsBlocked =
+              varLayers[li].Blocked || targetRawLayers[li]->IsBlocked;
+          rebuilt = layer;
+        }
+        bindingType = rebuilt;
+      }
+    }
     if (v.IsReference && bindingType && bindingType->isReference()) {
       auto pointeeType = bindingType->getPointeeType();
       fillSymbolMetadata(sym, bindingType,
                          pointeeType ? getLLVMType(pointeeType) : memberTy);
+    } else if (bindingType && (bindingType->isPointer() || bindingType->isSmartPointer())) {
+      fillSymbolMetadata(sym, bindingType, memberTy);
     } else {
       // Use memberTy (the 'Meat') as the soul type.
       fillSymbolMetadata(sym, "", false, false, false, v.IsReference,
                          v.IsValueMutable, memberTy);
     }
     sym.typeName = deducedType; // Set typeName in symbol
-    sym.isRebindable = false;
+    sym.isRebindable = v.Permission.IdentityRebindable;
     sym.isContinuous = memberTy->isArrayTy();
     m_Symbols[vName] = sym;
 
@@ -2845,10 +2880,29 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
         object = postfix->LHS.get();
 
       if (auto *var = dynamic_cast<const VariableExpr *>(object)) {
-        llvm::Value *identity = getIdentityAddr(var->codegenName());
-        llvm::Type *handleTy = getLLVMType(expr->Object->ResolvedType);
-        if (identity && handleTy)
-          objVal = m_Builder.CreateLoad(handleTy, identity, "unwrap.handle");
+        const std::string baseName = Type::stripMorphology(var->codegenName());
+        auto symIt = m_Symbols.find(baseName);
+        auto countRawLayers = [](std::shared_ptr<Type> t) -> int {
+          int count = 0;
+          while (t && t->isRawPointer()) {
+            ++count;
+            t = t->getPointeeType();
+          }
+          return count;
+        };
+        int declRawLayers =
+            (symIt != m_Symbols.end() && symIt->second.soulTypeObj)
+                ? countRawLayers(symIt->second.soulTypeObj)
+                : 0;
+        int exprRawLayers = countRawLayers(expr->Object->ResolvedType);
+        bool peeledOuterRaw =
+            declRawLayers > 1 && exprRawLayers > 0 && exprRawLayers < declRawLayers;
+        if (!peeledOuterRaw) {
+          llvm::Value *identity = emitHandleAddr(var);
+          llvm::Type *handleTy = getLLVMType(expr->Object->ResolvedType);
+          if (identity && handleTy)
+            objVal = m_Builder.CreateLoad(handleTy, identity, "unwrap.handle");
+        }
       }
       if (!objVal)
         objVal = genExpr(expr->Object.get()).load(m_Builder);
@@ -2916,7 +2970,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
       std::string vType = m_Symbols[varName].typeName;
       // vType is e.g. *Data or Data
       if (!vType.empty()) {
-        if (vType[0] == '*') {
+        if (vType[0] == '*' || vType[0] == '?') {
           dynamicTypeName = vType.substr(1); // Peel pointer
         } else {
           dynamicTypeName = vType; // Already base type (e.g. "Data")
@@ -3218,7 +3272,11 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
   bool targetExpectsPtr =
       (callee->arg_size() > selfLlvmIdx && callee->getArg(selfLlvmIdx)->getType()->isPointerTy());
 
-  if ((selfIsMutable || targetExpectsPtr) && !receiverProvidesUniquePayload && !capturedSharedPayload) {
+  const bool receiverIsRawPointerHandle =
+      expr->Object->ResolvedType && expr->Object->ResolvedType->isRawPointer();
+
+  if ((selfIsMutable || targetExpectsPtr) && !receiverProvidesUniquePayload &&
+      !capturedSharedPayload && !receiverIsRawPointerHandle) {
     // Must pass address
     // Reuse the address produced by the single receiver evaluation. Calling
     // genAddr again for a member chain whose base is a consuming call would
@@ -3385,7 +3443,7 @@ PhysEntity toka::CodeGen::genMethodCall(const toka::MethodCallExpr *expr) {
                 symbol->second.morphology == Morphology::None))) {
             argVal = getEntityAddr(var->codegenName());
           } else {
-            argVal = getIdentityAddr(var->codegenName());
+            argVal = emitHandleAddr(var);
           }
         } else if (dynamic_cast<const MemberExpr *>(source) ||
                    dynamic_cast<const ArrayIndexExpr *>(source)) {
@@ -3636,8 +3694,11 @@ void CodeGen::fillSymbolMetadata(TokaSymbol &sym, const std::string &typeStr,
   std::string ts = typeStr;
 
   // 1. Peel recursive indirection prefixes
-  while (!ts.empty() && (ts[0] == '*' || ts[0] == '^' || ts[0] == '~' || ts[0] == '&')) {
-    sym.indirectionLevel++;
+  while (!ts.empty() &&
+         (ts[0] == '*' || ts[0] == '?' || ts[0] == '^' || ts[0] == '~' ||
+          ts[0] == '&' || ts[0] == '#' || ts[0] == '$')) {
+    if (ts[0] != '#' && ts[0] != '$')
+      sym.indirectionLevel++;
     ts = ts.substr(1);
   }
 
@@ -3745,14 +3806,15 @@ llvm::Type *CodeGen::resolveType(const std::string &baseType, bool hasPointer) {
     return llvm::StructType::get(m_Context, {ptrTy, refCountTy});
   }
 
-  // Handle raw pointer types (e.g. *i32, *void) AND managed
+  // Handle raw pointer types (e.g. *i32, ?i32, *void) AND managed
   // pointers (^Type)
-  if (baseType.size() > 1 && (baseType[0] == '*' || baseType[0] == '^' ||
-                              baseType[0] == '~' || baseType[0] == '&')) {
+  if (baseType.size() > 1 && (baseType[0] == '*' || baseType[0] == '?' ||
+                              baseType[0] == '^' || baseType[0] == '~' ||
+                              baseType[0] == '&')) {
     size_t offset = 1;
     if (offset < baseType.size()) {
       char next = baseType[offset];
-      if (next == '#' || next == '?' || next == '!') {
+      if (next == '#' || next == '$' || next == '!') {
         offset++;
       }
     }

@@ -38,90 +38,128 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
   bool hasPointer = false;
   bool isUnique = false;
   bool isShared = false;
-  bool isPtrNullable = match(TokenType::KwNul); // [New Rule] nul pointer modifier
+  bool isPtrNullable = false;
   bool isRebindable = false;
   bool isRebindBlocked = false;
+  bool pendingNul = false;
+  Token nulTok;
   std::vector<HandleLayer> handleLayers;
 
   std::string morphologyPrefix = "";
   while (true) {
+    if (match(TokenType::KwNul)) {
+      pendingNul = true;
+      nulTok = previous();
+      isPtrNullable = true;
+      continue;
+    }
     if (match(TokenType::Ampersand)) {
       morphologyPrefix += "&";
       Token tok = previous();
       HandleLayer layer;
       layer.Morphology = BindingMorphology::Reference;
       layer.Rebindable = tok.IsSwappablePtr;
-      layer.Nullable = tok.HasNull;
+      layer.Nullable = pendingNul || tok.HasNull;
       layer.Blocked = tok.IsBlocked;
       handleLayers.push_back(layer);
       isRebindable = tok.IsSwappablePtr;
-      isPtrNullable = isPtrNullable || tok.HasNull;
+      isPtrNullable = isPtrNullable || layer.Nullable;
       isRebindBlocked = tok.IsBlocked;
-      if (isPtrNullable) {
-        error(tok, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+      if (layer.Nullable) {
+        HasError = true;
+        DiagnosticEngine::report(
+            tok.Loc, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
       }
+      pendingNul = false;
     } else if (match(TokenType::And)) {
       morphologyPrefix += "&&";
       Token tok = previous();
       HandleLayer outer;
       outer.Morphology = BindingMorphology::Reference;
       outer.Rebindable = tok.IsSwappablePtr;
-      outer.Nullable = tok.HasNull;
+      outer.Nullable = pendingNul || tok.HasNull;
       outer.Blocked = tok.IsBlocked;
       handleLayers.push_back(outer);
       HandleLayer inner;
       inner.Morphology = BindingMorphology::Reference;
       handleLayers.push_back(inner);
       isRebindable = tok.IsSwappablePtr;
-      isPtrNullable = isPtrNullable || tok.HasNull;
+      isPtrNullable = isPtrNullable || outer.Nullable;
       isRebindBlocked = tok.IsBlocked;
-      if (isPtrNullable) {
-        error(tok, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+      if (outer.Nullable) {
+        HasError = true;
+        DiagnosticEngine::report(
+            tok.Loc, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
       }
+      pendingNul = false;
     } else if (match(TokenType::Caret)) {
       morphologyPrefix += "^";
       Token tok = previous();
       HandleLayer layer;
       layer.Morphology = BindingMorphology::Unique;
       layer.Rebindable = tok.IsSwappablePtr;
-      layer.Nullable = tok.HasNull;
+      layer.Nullable = pendingNul || tok.HasNull;
       layer.Blocked = tok.IsBlocked;
       handleLayers.push_back(layer);
       isRebindable = tok.IsSwappablePtr;
-      isPtrNullable = isPtrNullable || tok.HasNull;
+      isPtrNullable = isPtrNullable || layer.Nullable;
       isRebindBlocked = tok.IsBlocked;
+      pendingNul = false;
     } else if (match(TokenType::Star)) {
+      if (pendingNul) {
+        HasError = true;
+        DiagnosticEngine::report(nulTok.Loc,
+                                 DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul *");
+      }
       morphologyPrefix += "*";
       Token tok = previous();
       HandleLayer layer;
       layer.Morphology = BindingMorphology::Raw;
       layer.Rebindable = tok.IsSwappablePtr;
-      layer.Nullable = tok.HasNull;
+      layer.Nullable = pendingNul || tok.HasNull;
       layer.Blocked = tok.IsBlocked;
       handleLayers.push_back(layer);
       isRebindable = tok.IsSwappablePtr;
-      isPtrNullable = isPtrNullable || tok.HasNull;
+      isPtrNullable = isPtrNullable || layer.Nullable;
       isRebindBlocked = tok.IsBlocked;
+      pendingNul = false;
+    } else if (match(TokenType::TokenNull)) {
+      if (pendingNul) {
+        HasError = true;
+        DiagnosticEngine::report(nulTok.Loc,
+                                 DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul ?");
+      }
+      morphologyPrefix += "?";
+      Token tok = previous();
+      HandleLayer layer;
+      layer.Morphology = BindingMorphology::Raw;
+      layer.Rebindable = tok.IsSwappablePtr;
+      layer.Nullable = true;
+      layer.Blocked = tok.IsBlocked;
+      handleLayers.push_back(layer);
+      isRebindable = tok.IsSwappablePtr;
+      isPtrNullable = true;
+      isRebindBlocked = tok.IsBlocked;
+      pendingNul = false;
     } else if (match(TokenType::Tilde)) {
       morphologyPrefix += "~";
       Token tok = previous();
       HandleLayer layer;
       layer.Morphology = BindingMorphology::Shared;
       layer.Rebindable = tok.IsSwappablePtr;
-      layer.Nullable = tok.HasNull;
+      layer.Nullable = pendingNul || tok.HasNull;
       layer.Blocked = tok.IsBlocked;
       handleLayers.push_back(layer);
       isRebindable = tok.IsSwappablePtr;
-      isPtrNullable = isPtrNullable || tok.HasNull;
+      isPtrNullable = isPtrNullable || layer.Nullable;
       isRebindBlocked = tok.IsBlocked;
+      pendingNul = false;
     } else {
       break;
     }
   }
 
   if (!handleLayers.empty()) {
-    handleLayers.front().Nullable =
-        handleLayers.front().Nullable || isPtrNullable;
     const auto outer = handleLayers.front().Morphology;
     isRef = outer == BindingMorphology::Reference;
     isUnique = outer == BindingMorphology::Unique;
@@ -162,15 +200,38 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
           hasNamed = true;
           std::string varPrefix = "";
           bool isRef = false;
-          if (match(TokenType::Ampersand)) {
-            varPrefix = "&";
-            isRef = true;
-          } else if (match(TokenType::Caret)) {
-            varPrefix = "^";
-          } else if (match(TokenType::Tilde)) {
-            varPrefix = "~";
-          } else if (match(TokenType::Star)) {
-            varPrefix = "*";
+          std::vector<HandleLayer> varLayers;
+          while (true) {
+            if (match(TokenType::Ampersand)) {
+              varPrefix += "&";
+              isRef = true;
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Reference, t.IsSwappablePtr, t.HasNull, t.IsBlocked});
+            } else if (match(TokenType::And)) {
+              varPrefix += "&&";
+              isRef = true;
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Reference, t.IsSwappablePtr, t.HasNull, t.IsBlocked});
+              varLayers.push_back({BindingMorphology::Reference, false, false, false});
+            } else if (match(TokenType::Caret)) {
+              varPrefix += "^";
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Unique, t.IsSwappablePtr, t.HasNull, t.IsBlocked});
+            } else if (match(TokenType::Tilde)) {
+              varPrefix += "~";
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Shared, t.IsSwappablePtr, t.HasNull, t.IsBlocked});
+            } else if (match(TokenType::Star)) {
+              varPrefix += "*";
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr, t.HasNull, t.IsBlocked});
+            } else if (match(TokenType::TokenNull)) {
+              varPrefix += "?";
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr, true, t.IsBlocked});
+            } else {
+              break;
+            }
           }
 
           Token varTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_VARIABLE_NAME_OR);
@@ -180,17 +241,11 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
           consume(TokenType::Dot, DiagID::ERR_PARSER_EXPECTED_AFTER_IN_NAMED_DESTRUCTURING);
 
           std::string fieldPrefix = "";
-          if (match(TokenType::Star))
-            fieldPrefix = "*";
-          else if (match(TokenType::Caret))
-            fieldPrefix = "^";
-          else if (match(TokenType::Tilde))
-            fieldPrefix = "~";
-          else if (match(TokenType::Ampersand))
-            fieldPrefix = "&";
-
-          if (match(TokenType::TokenNull))
-            fieldPrefix += "?";
+          while (match(TokenType::Star) || match(TokenType::TokenNull) ||
+                 match(TokenType::Caret) || match(TokenType::Tilde) ||
+                 match(TokenType::Ampersand) || match(TokenType::And)) {
+            fieldPrefix += previous().Text;
+          }
           if (match(TokenType::TokenWrite))
             fieldPrefix += "#";
 
@@ -207,24 +262,47 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
           v.IsValueNullable = varTok.HasNull;
           v.IsValueBlocked = varTok.IsBlocked;
           v.IsReference = isRef;
-          v.Permission = BindingPermission::fromLegacy(
-              varPrefix == "*", varPrefix == "^", varPrefix == "~", isRef,
-              false, false, false, varTok.HasWrite, varTok.HasNull,
-              varTok.IsBlocked);
+          v.Permission.HandleLayers = varLayers;
+          v.Permission.syncProjections();
+          v.Permission.SoulWritable = varTok.HasWrite;
+          v.Permission.SoulBlocked = varTok.IsBlocked;
           vars.push_back(v);
         } else {
           hasPositional = true;
           std::string varPrefix = "";
           bool isRef = false;
-          if (match(TokenType::Ampersand)) {
-            varPrefix = "&";
-            isRef = true;
-          } else if (match(TokenType::Caret)) {
-            varPrefix = "^";
-          } else if (match(TokenType::Tilde)) {
-            varPrefix = "~";
-          } else if (match(TokenType::Star)) {
-            varPrefix = "*";
+          std::vector<HandleLayer> varLayers;
+          while (true) {
+            if (match(TokenType::Ampersand)) {
+              varPrefix += "&";
+              isRef = true;
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Reference, t.IsSwappablePtr, t.HasNull, t.IsBlocked});
+            } else if (match(TokenType::And)) {
+              varPrefix += "&&";
+              isRef = true;
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Reference, t.IsSwappablePtr, t.HasNull, t.IsBlocked});
+              varLayers.push_back({BindingMorphology::Reference, false, false, false});
+            } else if (match(TokenType::Caret)) {
+              varPrefix += "^";
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Unique, t.IsSwappablePtr, t.HasNull, t.IsBlocked});
+            } else if (match(TokenType::Tilde)) {
+              varPrefix += "~";
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Shared, t.IsSwappablePtr, t.HasNull, t.IsBlocked});
+            } else if (match(TokenType::Star)) {
+              varPrefix += "*";
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr, t.HasNull, t.IsBlocked});
+            } else if (match(TokenType::TokenNull)) {
+              varPrefix += "?";
+              Token t = previous();
+              varLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr, true, t.IsBlocked});
+            } else {
+              break;
+            }
           }
           Token varTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_VARIABLE_NAME_OR);
           std::string fullVarName = varPrefix + varTok.Text;
@@ -237,10 +315,10 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
           v.IsValueNullable = varTok.HasNull;
           v.IsValueBlocked = varTok.IsBlocked;
           v.IsReference = isRef;
-          v.Permission = BindingPermission::fromLegacy(
-              varPrefix == "*", varPrefix == "^", varPrefix == "~", isRef,
-              false, false, false, varTok.HasWrite, varTok.HasNull,
-              varTok.IsBlocked);
+          v.Permission.HandleLayers = varLayers;
+          v.Permission.syncProjections();
+          v.Permission.SoulWritable = varTok.HasWrite;
+          v.Permission.SoulBlocked = varTok.IsBlocked;
           vars.push_back(v);
         }
       }
@@ -274,7 +352,12 @@ std::unique_ptr<Stmt> Parser::parseVariableDecl(bool isPub) {
     if (isAutoBinding)
       error(previous(), DiagID::ERR_PARSER_AUTO_BINDING_TYPE_ANNOTATION,
             fullVarName);
-    typeSyntax = parseRequiredTypeSyntax(hasPointer, TypeSyntaxPosition::NamedBinding);
+    const bool allowDirectVoid =
+        (!handleLayers.empty() &&
+         handleLayers.back().Morphology == BindingMorphology::Raw) ||
+        hasPointer;
+    typeSyntax = parseRequiredTypeSyntax(allowDirectVoid,
+                                         TypeSyntaxPosition::NamedBinding);
     typeName = canonicalType(typeSyntax);
     if (!typeName.empty() && typeName[0] == '\'') {
       errorTypeSideMorphicBinding(name, morphologyPrefix, typeName);

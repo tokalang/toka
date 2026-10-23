@@ -8,7 +8,7 @@ import core/result::{Result}
 // The inbox is bound to the thread that creates it.  It deliberately has no
 // Send implementation, so worker code can transfer only its sender half.
 pub shape HostThreadAffinity (
-    nul *marker: void = null as nul *void
+    ?marker: void = null as ?void
 )
 
 impl HostThreadAffinity@Encap {
@@ -90,7 +90,7 @@ impl<T: @Send> HostMailboxInbox<T> {
 pub fn host_mailbox_inbox<T: @Send>(cede receiver: Receiver<T>) -> HostMailboxInbox<T> {
     return HostMailboxInbox<T>(
         receiver = cede receiver,
-        thread_affinity = HostThreadAffinity(*marker = null as nul *void)
+        thread_affinity = HostThreadAffinity(?marker = null as ?void)
     )
 }
 
@@ -109,7 +109,7 @@ pub fn host_mailbox<T: @Send>() -> HostMailbox<T> {
         sender = HostMailboxSender<T>(sender = cede pair.tx),
         inbox = HostMailboxInbox<T>(
             receiver = cede pair.rx,
-            thread_affinity = HostThreadAffinity(*marker = null as nul *void)
+            thread_affinity = HostThreadAffinity(?marker = null as ?void)
         )
     )
 }

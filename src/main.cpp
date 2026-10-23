@@ -1201,15 +1201,35 @@ int main(int argc, char **argv) {
       dumpMemoryContracts = true;
     } else if (arg == "--encap-slice1-facts=json") {
       dumpEncapSlice1Facts = true;
+    } else if (arg == "--language-epoch") {
+      if (i + 1 >= argc) {
+        llvm::errs() << "--language-epoch requires an argument (0.20)\n";
+        return 1;
+      }
+      std::string epoch = argv[++i];
+      if (!toka::isValidLanguageEpoch(epoch)) {
+        llvm::errs() << "error: unsupported --language-epoch value '" << epoch
+                     << "' (expected 0.20)\n";
+        return 1;
+      }
+      toka::setActiveLanguageEpoch(std::move(epoch));
+    } else if (arg.rfind("--language-epoch=", 0) == 0) {
+      std::string epoch = arg.substr(std::string("--language-epoch=").size());
+      if (!toka::isValidLanguageEpoch(epoch)) {
+        llvm::errs() << "error: unsupported --language-epoch value '" << epoch
+                     << "' (expected 0.20)\n";
+        return 1;
+      }
+      toka::setActiveLanguageEpoch(std::move(epoch));
     } else if (arg == "--encap-epoch") {
       if (i + 1 >= argc) {
-        llvm::errs() << "--encap-epoch requires an argument (0.18 or 0.19)\n";
+        llvm::errs() << "--encap-epoch requires an argument (0.19)\n";
         return 1;
       }
       std::string epoch = argv[++i];
       if (!toka::isValidEncapEpoch(epoch)) {
         llvm::errs() << "error: unsupported --encap-epoch value '" << epoch
-                     << "' (expected 0.18 or 0.19)\n";
+                     << "' (expected 0.19)\n";
         return 1;
       }
       toka::setActiveEncapEpoch(std::move(epoch));
@@ -1217,7 +1237,7 @@ int main(int argc, char **argv) {
       std::string epoch = arg.substr(std::string("--encap-epoch=").size());
       if (!toka::isValidEncapEpoch(epoch)) {
         llvm::errs() << "error: unsupported --encap-epoch value '" << epoch
-                     << "' (expected 0.18 or 0.19)\n";
+                     << "' (expected 0.19)\n";
         return 1;
       }
       toka::setActiveEncapEpoch(std::move(epoch));
@@ -1704,7 +1724,11 @@ int main(int argc, char **argv) {
   }
   toka::Parser::TargetTriple = resolvedTargetTriple;
   if (toolchainNodeId.empty()) {
-    toolchainNodeId = std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION;
+    toolchainNodeId =
+        std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION +
+        "-fmt" + TOKA_INTERFACE_FORMAT_VERSION +
+        "-lang" + toka::getActiveLanguageEpoch() +
+        "-encap" + toka::getActiveEncapEpoch();
   }
 
   toka::SourceManager sm;

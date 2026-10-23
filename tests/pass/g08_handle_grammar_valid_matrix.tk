@@ -28,7 +28,7 @@ shape Level1Holder (
     ^u: Point,
     ~s: Point,
     *r: Point,
-    nul *nr: Point,
+    ?nr: Point,
     &b: Point
 )
 
@@ -53,7 +53,7 @@ fn main() -> i32 {
     // Level 1: &T, *T, nul *T
     auto &b = &pt
     auto *#rp = *#pt:*Point
-    auto nul *#nrp = null as nul *Point
+    auto ?#nrp = null as ?Point
 
     // Level 2: &^T, &~T via borrow
     auto &bu = &u
@@ -69,7 +69,7 @@ fn main() -> i32 {
     assert(b.x == 10, "b.x must be 10")
     assert(bu.x == 1, "bu.x must be 1")
     assert(bs.y == 4, "bs.y must be 4")
-    if *nrp == null {
+    if ?nrp == null {
         println("nrp is null verified")
     }
 

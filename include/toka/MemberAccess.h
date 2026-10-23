@@ -33,11 +33,11 @@ struct MemberAccessIntent {
 
 inline bool isMemberAccessPrefixChar(char c) {
   return c == '*' || c == '^' || c == '~' || c == '&' || c == '?' ||
-         c == '#' || c == '!';
+         c == '#' || c == '$' || c == '!';
 }
 
 inline bool isMemberAccessHatChar(char c) {
-  return c == '^' || c == '*' || c == '~' || c == '&';
+  return c == '^' || c == '*' || c == '?' || c == '~' || c == '&';
 }
 
 inline int countLeadingMemberHats(const std::string &s) {
@@ -45,6 +45,8 @@ inline int countLeadingMemberHats(const std::string &s) {
   for (char c : s) {
     if (isMemberAccessHatChar(c))
       count++;
+    else if (c == '#' || c == '$')
+      continue;
     else
       break;
   }

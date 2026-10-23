@@ -63,8 +63,8 @@ impl File {
             }
             temp_buf[mode_len] = 0 as char
 
-            auto nul *p = libc_fopen(path.c_str(), &temp_buf[0] as *char)
-            if *p == null {
+            auto ?p = libc_fopen(path.c_str(), &temp_buf[0] as *char)
+            if ?p == null {
                 return Result<File, IoError>::Err(
                     IoError::new("open", sys::get_last_error(), "failed to open file")
                 )
@@ -209,8 +209,8 @@ impl File {
             auto done# = false
             
             loop !done {
-                auto nul *res = libc_fgets(*temp_ptr, buf_size, self.*handle)
-                if *res == null {
+                auto ?res = libc_fgets(*temp_ptr, buf_size, self.*handle)
+                if ?res == null {
                     done = true
                 } else {
                     auto slen = libc_strlen(*temp_ptr)
@@ -301,8 +301,8 @@ pub fn print_line(s: string) {
 
 pub fn exists(path: string) -> bool {
     unsafe {
-        auto nul *p = libc_fopen(path.c_str(), c"r")
-        if *p != null {
+        auto ?p = libc_fopen(path.c_str(), c"r")
+        if ?p != null {
             auto *live_p = p.unwrap()
             libc_fclose(*live_p)
             return true

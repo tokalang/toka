@@ -208,15 +208,16 @@ void Parser::parseWhereConstraints(std::vector<GenericParam> &genericParams,
 
 bool Parser::looksLikeNamedReturn() const {
   int look = 0;
-  if (peekAt(look).Kind == TokenType::KwNul)
+  while (peekAt(look).Kind == TokenType::KwNul ||
+         peekAt(look).Kind == TokenType::Ampersand ||
+         peekAt(look).Kind == TokenType::And ||
+         peekAt(look).Kind == TokenType::Star ||
+         peekAt(look).Kind == TokenType::TokenNull ||
+         peekAt(look).Kind == TokenType::Caret ||
+         peekAt(look).Kind == TokenType::Tilde ||
+         peekAt(look).Kind == TokenType::TokenWrite) {
     look++;
-  if (peekAt(look).Kind == TokenType::Ampersand ||
-      peekAt(look).Kind == TokenType::Star ||
-      peekAt(look).Kind == TokenType::Caret ||
-      peekAt(look).Kind == TokenType::Tilde)
-    look++;
-  if (peekAt(look).Kind == TokenType::TokenWrite)
-    look++;
+  }
   return peekAt(look).Kind == TokenType::Identifier &&
          peekAt(look + 1).Kind == TokenType::Colon;
 }
@@ -272,18 +273,29 @@ bool Parser::parseReturnDependencyTarget(
       return false;
 
     target.Kind = ReturnDependencyTargetKind::NamedBinding;
-    if (match(TokenType::KwNul))
-      target.BindingPrefix += "nul ";
-    if (match(TokenType::Ampersand))
-      target.BindingPrefix += "&";
-    else if (match(TokenType::Caret))
-      target.BindingPrefix += "^";
-    else if (match(TokenType::Star))
-      target.BindingPrefix += "*";
-    else if (match(TokenType::Tilde))
-      target.BindingPrefix += "~";
-    if (match(TokenType::TokenWrite))
-      target.BindingPrefix += "#";
+    while (true) {
+      if (match(TokenType::KwNul)) {
+        Token nulTok = previous();
+        if (check(TokenType::Star) || check(TokenType::TokenNull)) {
+          HasError = true;
+          DiagnosticEngine::report(nulTok.Loc,
+                                   DiagID::ERR_LEGACY_NUL_RAW_REMOVED,
+                                   "nul *");
+        }
+        target.BindingPrefix += "nul ";
+      }
+      if (match(TokenType::And)) {
+        target.BindingPrefix += "&&";
+      } else if (match(TokenType::Ampersand) || match(TokenType::Caret) ||
+                 match(TokenType::Star) || match(TokenType::TokenNull) ||
+                 match(TokenType::Tilde)) {
+        target.BindingPrefix += previous().Text;
+      } else if (match(TokenType::TokenWrite)) {
+        target.BindingPrefix += "#";
+      } else {
+        break;
+      }
+    }
     if (!check(TokenType::Identifier) ||
         peek().Text != contract.BindingName)
       return false;
@@ -294,16 +306,19 @@ bool Parser::parseReturnDependencyTarget(
   if (!match(TokenType::Dot))
     return true;
 
-  if (match(TokenType::Ampersand))
-    target.MemberPrefix += "&";
-  else if (match(TokenType::Caret))
-    target.MemberPrefix += "^";
-  else if (match(TokenType::Star))
-    target.MemberPrefix += "*";
-  else if (match(TokenType::Tilde))
-    target.MemberPrefix += "~";
-  if (match(TokenType::TokenWrite))
-    target.MemberPrefix += "#";
+  while (true) {
+    if (match(TokenType::And)) {
+      target.MemberPrefix += "&&";
+    } else if (match(TokenType::Ampersand) || match(TokenType::Caret) ||
+               match(TokenType::Star) || match(TokenType::TokenNull) ||
+               match(TokenType::Tilde)) {
+      target.MemberPrefix += previous().Text;
+    } else if (match(TokenType::TokenWrite)) {
+      target.MemberPrefix += "#";
+    } else {
+      break;
+    }
+  }
   if (!(check(TokenType::Identifier) || check(TokenType::Integer))) {
     error(peek(), DiagID::ERR_PARSER_EXPECTED_IDENTIFIER_OR_INTEGER_AFTER_IN);
     return false;
@@ -350,18 +365,35 @@ ReturnContractSyntax Parser::parseReturnContract(bool allowDependencies,
     contract.Effect = EffectKind::Wait;
 
   if (looksLikeNamedReturn()) {
-    if (match(TokenType::KwNul))
-      contract.BindingPrefix += "nul ";
-    if (match(TokenType::Ampersand))
-      contract.BindingPrefix += "&";
-    else if (match(TokenType::Star))
-      contract.BindingPrefix += "*";
-    else if (match(TokenType::Caret))
-      contract.BindingPrefix += "^";
-    else if (match(TokenType::Tilde))
-      contract.BindingPrefix += "~";
-    if (match(TokenType::TokenWrite))
-      contract.BindingPrefix += "#";
+    std::vector<std::string> returnPrefixes;
+    while (true) {
+      if (match(TokenType::KwNul)) {
+        Token nulTok = previous();
+        if (check(TokenType::Star) || check(TokenType::TokenNull)) {
+          HasError = true;
+          DiagnosticEngine::report(nulTok.Loc,
+                                   DiagID::ERR_LEGACY_NUL_RAW_REMOVED,
+                                   "nul *");
+        }
+        contract.BindingPrefix += "nul ";
+        returnPrefixes.push_back("nul");
+      }
+      if (match(TokenType::And)) {
+        contract.BindingPrefix += "&&";
+        returnPrefixes.push_back("&");
+        returnPrefixes.push_back("&");
+      } else if (match(TokenType::Ampersand) || match(TokenType::Star) ||
+                 match(TokenType::TokenNull) || match(TokenType::Caret) ||
+                 match(TokenType::Tilde)) {
+        contract.BindingPrefix += previous().Text;
+        returnPrefixes.push_back(previous().Text);
+      } else if (match(TokenType::TokenWrite)) {
+        contract.BindingPrefix += "#";
+        returnPrefixes.push_back("#");
+      } else {
+        break;
+      }
+    }
 
     Token nameTok =
         consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_RETURN_NAME);
@@ -380,9 +412,10 @@ ReturnContractSyntax Parser::parseReturnContract(bool allowDependencies,
             "#", contract.TypeSyntax, contract.TypeSyntax->Begin,
             contract.TypeSyntax->End, true);
       }
-      if (!contract.BindingPrefix.empty()) {
+      for (auto it = returnPrefixes.rbegin(); it != returnPrefixes.rend();
+           ++it) {
         contract.TypeSyntax = TypeSyntax::morphology(
-            contract.BindingPrefix, contract.TypeSyntax,
+            *it, contract.TypeSyntax,
             contract.TypeSyntax->Begin, contract.TypeSyntax->End);
       }
       contract.Type = canonicalType(contract.TypeSyntax);
@@ -653,44 +686,63 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
             isExplicitBound = true;
           }
 
-          bool isPtrNullable = match(TokenType::KwNul);
-          if (match(TokenType::Star)) {
-            memberPrefix = "*";
-            m.IsRawPointer = true;
-            m.IsRebindable = previous().IsSwappablePtr;
-            m.IsPointerNullable = isPtrNullable;
-            m.IsRebindBlocked = previous().IsBlocked;
-          } else if (match(TokenType::Caret)) {
-            memberPrefix = "^";
-            m.IsUnique = true;
-            m.IsRebindable = previous().IsSwappablePtr;
-            m.IsPointerNullable = isPtrNullable;
-            m.IsRebindBlocked = previous().IsBlocked;
-          } else if (match(TokenType::Tilde)) {
-            memberPrefix = "~";
-            m.IsShared = true;
-            m.IsRebindable = previous().IsSwappablePtr;
-            m.IsPointerNullable = isPtrNullable;
-            m.IsRebindBlocked = previous().IsBlocked;
-          } else if (match(TokenType::Ampersand)) {
-            memberPrefix = "&";
-            m.IsReference = true;
-            m.IsRebindable = previous().IsSwappablePtr;
-            m.IsPointerNullable = isPtrNullable;
-            m.IsRebindBlocked = previous().IsBlocked;
-            if (isPtrNullable) {
-              error(previous(), DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+          std::vector<HandleLayer> handleLayers;
+          while (true) {
+            bool isPtrNullable = match(TokenType::KwNul);
+            Token nulTok = isPtrNullable ? previous() : Token{};
+            if (match(TokenType::And)) {
+              Token t = previous();
+              if (isPtrNullable) {
+                error(nulTok, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+              }
+              memberPrefix += "&&";
+              handleLayers.push_back({BindingMorphology::Reference, t.IsSwappablePtr, isPtrNullable, t.IsBlocked});
+              handleLayers.push_back({BindingMorphology::Reference, false, false, false});
+            } else if (match(TokenType::Ampersand)) {
+              Token t = previous();
+              if (isPtrNullable) {
+                error(nulTok, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+              }
+              memberPrefix += "&";
+              handleLayers.push_back({BindingMorphology::Reference, t.IsSwappablePtr, isPtrNullable, t.IsBlocked});
+            } else if (match(TokenType::Caret)) {
+              Token t = previous();
+              if (isPtrNullable) {
+                HasError = true;
+                DiagnosticEngine::report(nulTok.Loc, DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED, "nul ^T");
+              }
+              memberPrefix += "^";
+              handleLayers.push_back({BindingMorphology::Unique, t.IsSwappablePtr, isPtrNullable, t.IsBlocked});
+            } else if (match(TokenType::Tilde)) {
+              Token t = previous();
+              if (isPtrNullable) {
+                HasError = true;
+                DiagnosticEngine::report(nulTok.Loc, DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED, "nul ~T");
+              }
+              memberPrefix += "~";
+              handleLayers.push_back({BindingMorphology::Shared, t.IsSwappablePtr, isPtrNullable, t.IsBlocked});
+            } else if (match(TokenType::Star)) {
+              Token t = previous();
+              if (isPtrNullable) {
+                HasError = true;
+                DiagnosticEngine::report(nulTok.Loc, DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul *");
+              }
+              memberPrefix += "*";
+              handleLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr, isPtrNullable, t.IsBlocked});
+            } else if (match(TokenType::TokenNull)) {
+              Token t = previous();
+              if (isPtrNullable) {
+                HasError = true;
+                DiagnosticEngine::report(nulTok.Loc, DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul ?");
+              }
+              memberPrefix += "?";
+              handleLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr, true, t.IsBlocked});
+            } else {
+              if (isPtrNullable) {
+                error(nulTok, DiagID::ERR_PARSER_NUL_CAN_ONLY_BE_APPLIED_TO_POINTER_TYPE);
+              }
+              break;
             }
-          } else if (isPtrNullable) {
-            error(previous(), DiagID::ERR_PARSER_NUL_CAN_ONLY_BE_APPLIED_TO_POINTER_TYPE);
-          }
-
-          if (isPtrNullable && (m.IsUnique || m.IsShared)) {
-            HasError = true;
-            DiagnosticEngine::report(
-                previous().Loc,
-                DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED,
-                m.IsUnique ? "nul ^T" : "nul ~T");
           }
 
           nameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
@@ -703,6 +755,20 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           m.IsValueMutable = nameTok.HasWrite;
           m.IsValueNullable = nameTok.HasNull;
           m.IsValueBlocked = nameTok.IsBlocked;
+          if (!handleLayers.empty()) {
+            m.Permission.HandleLayers = handleLayers;
+            m.Permission.syncProjections();
+          }
+          m.Permission.SoulWritable = m.IsValueMutable;
+          m.Permission.SoulBlocked = m.IsValueBlocked;
+          m.Permission.MorphicExempt = m.IsMorphicExempt;
+          m.IsRawPointer = (m.Permission.outerMorphology() == BindingMorphology::Raw);
+          m.IsUnique = (m.Permission.outerMorphology() == BindingMorphology::Unique);
+          m.IsShared = (m.Permission.outerMorphology() == BindingMorphology::Shared);
+          m.IsReference = (m.Permission.outerMorphology() == BindingMorphology::Reference);
+          m.IsRebindable = m.Permission.IdentityRebindable;
+          m.IsPointerNullable = m.Permission.IdentityMayBeZero;
+          m.IsRebindBlocked = m.Permission.IdentityBlocked;
           consume(TokenType::Colon, DiagID::ERR_EXPECTED_COLON);
 
           m.Type = "";
@@ -711,7 +777,11 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
           m.Type = "";
         }
 
-        TypeSyntaxPtr rawTypeSyntax = parseRequiredTypeSyntax(m.IsRawPointer,
+        const bool allowMemberDirectVoid =
+            (!m.Permission.HandleLayers.empty() &&
+             m.Permission.HandleLayers.back().Morphology == BindingMorphology::Raw) ||
+            m.IsRawPointer;
+        TypeSyntaxPtr rawTypeSyntax = parseRequiredTypeSyntax(allowMemberDirectVoid,
             kind == ShapeKind::Struct ? TypeSyntaxPosition::NamedBinding : TypeSyntaxPosition::NonReturn);
         std::string rawType = canonicalType(rawTypeSyntax);
         if (kind == ShapeKind::Struct) {
@@ -724,7 +794,7 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
             errorTypeSideMorphicBinding(nameTok, memberPrefix, trimmed);
             rawType = trimmed.substr(1);
           }
-          if (!trimmed.empty() && (trimmed[0] == '&' || trimmed[0] == '^' || trimmed[0] == '~' || trimmed[0] == '*')) {
+          if (!trimmed.empty() && (trimmed[0] == '&' || trimmed[0] == '^' || trimmed[0] == '~' || trimmed[0] == '*' || trimmed[0] == '?')) {
             char sigil = trimmed[0];
             std::string suggestion = std::string(1, sigil) + m.Name + ": " + trimmed.substr(1);
             std::string msg = "Pointer morphology sigil ('" + std::string(1, sigil) + 
@@ -743,11 +813,6 @@ std::unique_ptr<ShapeDecl> Parser::parseShape(bool isPub) {
         m.Type = rawType;
         m.TypeSyntax = rawTypeSyntax;
         m.IsExplicitBound = isExplicitBound;
-        m.Permission = BindingPermission::fromLegacy(
-            m.IsRawPointer, m.IsUnique, m.IsShared, m.IsReference,
-            m.IsRebindable, m.IsPointerNullable, m.IsRebindBlocked,
-            m.IsValueMutable, m.IsValueNullable, m.IsValueBlocked,
-            m.IsMorphicExempt);
         if (match(TokenType::Equal)) {
           m.DefaultValue = parseExpr();
         }
@@ -934,6 +999,10 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           noteHat("~", t);
         } else if (match(TokenType::Star)) {
           Token t = previous();
+          if (layerNull) {
+            DiagnosticEngine::report(t.Loc, DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul *");
+            HasError = true;
+          }
           HandleLayer l;
           l.Morphology = BindingMorphology::Raw;
           l.Nullable = layerNull;
@@ -941,6 +1010,19 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
           l.Blocked = t.IsBlocked;
           handleLayers.push_back(l);
           noteHat("*", t);
+        } else if (match(TokenType::TokenNull)) {
+          Token t = previous();
+          if (layerNull) {
+            DiagnosticEngine::report(t.Loc, DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul ?");
+            HasError = true;
+          }
+          HandleLayer l;
+          l.Morphology = BindingMorphology::Raw;
+          l.Nullable = true;
+          l.Rebindable = t.IsSwappablePtr;
+          l.Blocked = t.IsBlocked;
+          handleLayers.push_back(l);
+          noteHat("?", t);
         } else {
           if (layerNull) {
             error(previous(), DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
@@ -964,7 +1046,10 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl(bool isPub) {
       } else if (!isTypeStart()) {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
       } else {
-        argTypeSyntax = parseTypeSyntax(true, false, false, false, argPrefix == "*",
+        const bool allowArgDirectVoid =
+            !handleLayers.empty() &&
+            handleLayers.back().Morphology == BindingMorphology::Raw;
+        argTypeSyntax = parseTypeSyntax(true, false, false, false, allowArgDirectVoid,
                                           TypeSyntaxPosition::NamedParameter);
         argType = canonicalType(argTypeSyntax);
       }
@@ -1137,8 +1222,20 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
           noteHat("~", t);
         } else if (match(TokenType::Star)) {
           Token t = previous();
-          handleLayers.push_back({BindingMorphology::Raw, false, layerNullable, false});
+          if (layerNullable) {
+            DiagnosticEngine::report(t.Loc, DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul *");
+            HasError = true;
+          }
+          handleLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr, layerNullable, t.IsBlocked});
           noteHat("*", t);
+        } else if (match(TokenType::TokenNull)) {
+          Token t = previous();
+          if (layerNullable) {
+            DiagnosticEngine::report(t.Loc, DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul ?");
+            HasError = true;
+          }
+          handleLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr, true, t.IsBlocked});
+          noteHat("?", t);
         } else {
           if (layerNullable) {
             error(previous(), DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
@@ -1155,8 +1252,11 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       } else if (!isTypeStart()) {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_PARAMETER_TYPE);
       } else {
+        const bool allowArgDirectVoid =
+            !handleLayers.empty() &&
+            handleLayers.back().Morphology == BindingMorphology::Raw;
         argTypeSyntax =
-            parseTypeSyntax(true, false, false, false, argPrefix == "*",
+            parseTypeSyntax(true, false, false, false, allowArgDirectVoid,
                             TypeSyntaxPosition::NamedParameter);
         argType = canonicalType(argTypeSyntax);
       }
@@ -1193,6 +1293,9 @@ std::unique_ptr<ExternDecl> Parser::parseExternDecl() {
       arg.IsMorphicExempt = nameIsMorphic;
       arg.Permission.HandleLayers = handleLayers;
       arg.Permission.syncProjections();
+      arg.Permission.SoulWritable = argName.HasWrite;
+      arg.Permission.SoulBlocked = argName.IsBlocked;
+      arg.Permission.MorphicExempt = nameIsMorphic;
       if (match(TokenType::Equal)) {
         arg.DefaultValue = parseExpr();
       }

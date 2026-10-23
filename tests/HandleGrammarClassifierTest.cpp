@@ -183,7 +183,7 @@ int main() {
     std::vector<TestCase> testCases = {
         // --- 1. Legal Level 1 Handles ---
         {"*i32", HandleGrammarViolation::None, 0, 0, 1},
-        {"nul *i32", HandleGrammarViolation::None, 0, 0, 1},
+        {"?i32", HandleGrammarViolation::None, 0, 0, 1},
         {"^i32", HandleGrammarViolation::None, 1, 0, 0},
         {"~i32", HandleGrammarViolation::None, 1, 0, 0},
         {"&i32", HandleGrammarViolation::None, 1, 1, 0},
@@ -191,6 +191,9 @@ int main() {
 
         // --- 2. Legal Level 2 Handles ---
         {"**i32", HandleGrammarViolation::None, 0, 0, 2},
+        {"?*i32", HandleGrammarViolation::None, 0, 0, 2},
+        {"*?i32", HandleGrammarViolation::None, 0, 0, 2},
+        {"??i32", HandleGrammarViolation::None, 0, 0, 2},
         {"&^i32", HandleGrammarViolation::None, 2, 1, 0},
         {"&~i32", HandleGrammarViolation::None, 2, 1, 0},
         {"&&i32", HandleGrammarViolation::None, 2, 2, 0},
@@ -253,7 +256,10 @@ int main() {
         {"fn(&^i32)->void", HandleGrammarViolation::ParamHandleDepthForbidden, "FunctionParam(0)", 0, 1},
         {"fn(&~i32)->void", HandleGrammarViolation::ParamHandleDepthForbidden, "FunctionParam(0)", 0, 1},
         {"fn(&&i32)->void", HandleGrammarViolation::ParamHandleDepthForbidden, "FunctionParam(0)", 0, 1},
-        {"fn(**i32)->void", HandleGrammarViolation::ParamHandleDepthForbidden, "FunctionParam(0)", 0, 1},
+        {"fn(**i32)->void", HandleGrammarViolation::None, "", 0, 0},
+        {"fn(?*i32)->void", HandleGrammarViolation::None, "", 0, 0},
+        {"fn(*?i32)->void", HandleGrammarViolation::None, "", 0, 0},
+        {"fn(??i32)->void", HandleGrammarViolation::None, "", 0, 0},
         {"Option<*&i32>", HandleGrammarViolation::MixedManagedRaw, "GenericArg(0)", 0, 1},
         {"[*^i32; 4]", HandleGrammarViolation::MixedManagedRaw, "ArrayElement", 0, 1},
         {"[*&i32]", HandleGrammarViolation::MixedManagedRaw, "SliceElement", 0, 1},

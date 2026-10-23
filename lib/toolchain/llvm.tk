@@ -121,7 +121,7 @@ impl LLVMType {
 
     pub fn function(retTy: LLVMType, *paramTys: [LLVMType], count: usize, isVarArg: bool) -> LLVMType {
         if count == 0:usize {
-            return LLVMType(*handle = toka_llvm_type_function(retTy.*handle, null as nul *void, 0, isVarArg))
+            return LLVMType(*handle = toka_llvm_type_function(retTy.*handle, null as ?void, 0, isVarArg))
         }
 
         unsafe {
@@ -353,7 +353,7 @@ impl LLVMBuilder {
 
     pub fn build_call(self#, fn_val: LLVMValue, *args: [LLVMValue], count: usize, name: string) -> LLVMValue {
         if count == 0:usize {
-            return LLVMValue(*handle = toka_llvm_build_call(self.*handle, fn_val.*handle, null as nul *void, 0, name.c_str()))
+            return LLVMValue(*handle = toka_llvm_build_call(self.*handle, fn_val.*handle, null as ?void, 0, name.c_str()))
         }
 
         unsafe {
@@ -384,7 +384,7 @@ impl LLVMBuilder {
 
     pub fn build_gep(self#, ty: LLVMType, ptr: LLVMValue, *indices: [LLVMValue], count: usize, name: string) -> LLVMValue {
         if count == 0:usize {
-            return LLVMValue(*handle = toka_llvm_build_gep(self.*handle, ty.*handle, ptr.*handle, null as nul *void, 0, name.c_str()))
+            return LLVMValue(*handle = toka_llvm_build_gep(self.*handle, ty.*handle, ptr.*handle, null as ?void, 0, name.c_str()))
         }
         unsafe {
             auto *handles# = unsafe alloc [count] Addr

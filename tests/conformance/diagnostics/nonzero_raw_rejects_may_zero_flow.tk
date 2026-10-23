@@ -1,5 +1,5 @@
 fn main() -> i32 {
-    auto nul *source = null:nul *i32
-    auto *target = source
+    auto ?source = null:?i32
+    auto *target = ?source
     return 0
 }

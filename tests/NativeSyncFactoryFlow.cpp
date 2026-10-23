@@ -109,7 +109,7 @@ pub fn __native_shared_owner_test() {
   // Complete element morphology participates in instantiated nominal identity.
   // Only test-side candidate types are changed; the real sealed plan is never
   // constructed or altered by the test.
-  for (const char *spelling : {"i32#", "^i32", "~i32", "*i32", "&i32", "nul *i32", "i32$"}) {
+  for (const char *spelling : {"i32#", "^i32", "~i32", "*i32", "&i32", "?i32", "i32$"}) {
     auto changedDecl = std::make_unique<ShapeDecl>(*owner->Decl);
     changedDecl->InstantiationTemplate = decl->InstantiationTemplate;
     changedDecl->InstantiationArgs = decl->InstantiationArgs;

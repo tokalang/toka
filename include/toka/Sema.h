@@ -175,6 +175,10 @@ struct SymbolInfo {
     // For pointer handles, writability comes from the accessible pointee view.
     // Reference views are handled above: an immutable & binding must not inherit
     // write permission just because its source path was mutable.
+    if (TypeObj->isRawPointer()) {
+      auto soul = TypeObj->getSoulType();
+      return soul && soul->IsWritable && !soul->IsBlocked;
+    }
     if (TypeObj->isPointer()) {
       auto pointee = TypeObj->getPointeeType();
       return pointee && pointee->IsWritable;
@@ -1013,6 +1017,50 @@ private:
 
   // Path Narrowing
   std::set<std::string> m_NarrowedPaths;
+  std::set<std::string> m_MutableAliasedPaths;
+
+  bool hasActiveNonZeroFact(const std::string &path) const {
+    if (path.empty())
+      return false;
+    if (m_NarrowedPaths.count(path) > 0)
+      return true;
+    std::string stripped = Type::stripMorphology(path);
+    if (!stripped.empty() && m_NarrowedPaths.count(stripped) > 0)
+      return true;
+    for (const auto &entry : m_NarrowedPaths) {
+      if (!stripped.empty() && Type::stripMorphology(entry) == stripped)
+        return true;
+    }
+    return false;
+  }
+
+  void invalidateNonZeroFactForPath(const std::string &path,
+                                    bool subpathsOnly = false) {
+    if (path.empty())
+      return;
+    std::string stripped = Type::stripMorphology(path);
+    for (auto it = m_NarrowedPaths.begin(); it != m_NarrowedPaths.end();) {
+      std::string itStripped = Type::stripMorphology(*it);
+      bool exactMatch =
+          !subpathsOnly && (*it == path || itStripped == stripped);
+      bool subpathMatch =
+          itStripped.size() > stripped.size() &&
+          itStripped.compare(0, stripped.size(), stripped) == 0 &&
+          (itStripped[stripped.size()] == '.' ||
+           itStripped[stripped.size()] == '[');
+      if (exactMatch || subpathMatch) {
+        it = m_NarrowedPaths.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  void invalidateAliasedNonZeroFacts() {
+    for (const auto &aliasPath : m_MutableAliasedPaths) {
+      invalidateNonZeroFactForPath(aliasPath);
+    }
+  }
 
   // Unlike a binding declaration, a projected handle can be rebound during
   // a statement sequence.  Keep its one-hop shared-flow ceiling by exact
@@ -1694,31 +1742,54 @@ private:
                                             bool stripSoulPrefixes = true) {
     std::string Signature = "";
 
-    // 1. Morphologies (Prefix Zone)
-    switch (Permission.Morphology) {
-    case BindingMorphology::Unique:
-      Signature += "^";
-      break;
-    case BindingMorphology::Shared:
-      Signature += "~";
-      break;
-    case BindingMorphology::Reference:
-      Signature += "&";
-      break;
-    case BindingMorphology::Raw:
-      Signature += "*";
-      break;
-    case BindingMorphology::None:
-      break;
-    }
+    if (!Permission.HandleLayers.empty()) {
+      for (const auto &layer : Permission.HandleLayers) {
+        switch (layer.Morphology) {
+        case BindingMorphology::Unique:
+          Signature += "^";
+          break;
+        case BindingMorphology::Shared:
+          Signature += "~";
+          break;
+        case BindingMorphology::Reference:
+          Signature += "&";
+          break;
+        case BindingMorphology::Raw:
+          Signature += layer.Nullable ? "?" : "*";
+          break;
+        case BindingMorphology::None:
+          break;
+        }
+        if (layer.Rebindable)
+          Signature += "#";
+        if (layer.Blocked)
+          Signature += "$";
+      }
+    } else {
+      // 1. Morphologies (Prefix Zone)
+      switch (Permission.Morphology) {
+      case BindingMorphology::Unique:
+        Signature += "^";
+        break;
+      case BindingMorphology::Shared:
+        Signature += "~";
+        break;
+      case BindingMorphology::Reference:
+        Signature += "&";
+        break;
+      case BindingMorphology::Raw:
+        Signature += Permission.IdentityMayBeZero ? "?" : "*";
+        break;
+      case BindingMorphology::None:
+        break;
+      }
 
-    // 2. Identity Attributes (Prefix Zone)
-    if (Permission.IdentityRebindable)
-      Signature += "#";
-    if (Permission.IdentityBlocked)
-      Signature += "$";
-    if (Permission.IdentityMayBeZero)
-      Signature = "nul " + Signature;
+      // 2. Identity Attributes (Prefix Zone)
+      if (Permission.IdentityRebindable)
+        Signature += "#";
+      if (Permission.IdentityBlocked)
+        Signature += "$";
+    }
 
     // 3. Soul Type (Base Name)
     Signature += stripSoulPrefixes ? toka::Type::stripPrefixes(SoulType)
@@ -1751,11 +1822,15 @@ private:
     // annotation at the call boundary.
     if (stripSoulPrefixes) {
       while (soulSyntax && soulSyntax->NodeKind == TypeSyntax::Kind::Morphology &&
-             !soulSyntax->IsPostfix &&
-             (soulSyntax->Text == "nul" || soulSyntax->Text == "*" ||
-              soulSyntax->Text == "^" || soulSyntax->Text == "~" ||
-              soulSyntax->Text == "&" || soulSyntax->Text == "#" ||
-              soulSyntax->Text == "?" || soulSyntax->Text == "$")) {
+             !soulSyntax->IsPostfix && !soulSyntax->Text.empty() &&
+             (soulSyntax->Text == "nul" ||
+              soulSyntax->Text.front() == '*' ||
+              soulSyntax->Text.front() == '?' ||
+              soulSyntax->Text.front() == '^' ||
+              soulSyntax->Text.front() == '~' ||
+              soulSyntax->Text.front() == '&' ||
+              soulSyntax->Text == "#" ||
+              soulSyntax->Text == "$")) {
         soulSyntax = soulSyntax->Subject;
       }
     }
@@ -1770,7 +1845,7 @@ private:
     // into TypeSyntax.
     soul = soul->withAttributes(
         soul->IsWritable || Permission.SoulWritable,
-        false,
+        soul->IsNullable,
         soul->IsBlocked || Permission.SoulBlocked);
 
     if (auto ptr = std::dynamic_pointer_cast<toka::PointerType>(soul)) {
@@ -1991,6 +2066,7 @@ private:
   }
 
   MorphKind getSyntacticMorphology(Expr *E);
+  bool isUnnarrowedBareNullableRawExpr(const Expr *E);
   bool checkStrictMorphology(ASTNode *Node, MorphKind Target, MorphKind Source,
                              const std::string &TargetName);
 

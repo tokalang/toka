@@ -18,9 +18,9 @@ extern fn __builtin_coro_suspend() -> void
 extern fn toka_tls_read(*handle: void, *buf: void, len: usize) -> i32
 extern fn toka_tls_write(*handle: void, *buf: void, len: usize) -> i32
 extern fn toka_tls_close(*handle: void) -> void
-extern fn toka_tls_context_new() -> nul *void
-extern fn toka_tls_server_context_new() -> nul *void
-extern fn toka_tls_server_context_new_with_cert_file(*cert: char, *key: char) -> nul *void
+extern fn toka_tls_context_new() -> ?void
+extern fn toka_tls_server_context_new() -> ?void
+extern fn toka_tls_server_context_new_with_cert_file(*cert: char, *key: char) -> ?void
 extern fn toka_tls_set_verify_mode(*handle: void, verify_peer: i32) -> void
 extern fn toka_tls_set_ca_file(*handle: void, *ca_path: char) -> i32
 extern fn toka_tls_set_sni(*handle: void, *host: char) -> i32
@@ -33,7 +33,7 @@ pub alias NetResult<T> = Result<T, string>
 
 // TLS context/control adapters. The OpenSSL ABI is kept below stdx; callers
 // should use TcpStream::tls_* for I/O and handshakes.
-pub fn net_tls_context_new() -> nul *void {
+pub fn net_tls_context_new() -> ?void {
     unsafe { return toka_tls_context_new() }
 }
 
@@ -47,11 +47,11 @@ pub fn net_random_bytes(cede buffer: Vec<u8>) -> Result<Vec<u8>, string> {
     return fill_secure_random_bytes(cede buffer)
 }
 
-pub fn net_tls_server_context_new() -> nul *void {
+pub fn net_tls_server_context_new() -> ?void {
     unsafe { return toka_tls_server_context_new() }
 }
 
-pub fn net_tls_server_context_new_with_cert_file(cert_path: string, key_path: string) -> nul *void {
+pub fn net_tls_server_context_new_with_cert_file(cert_path: string, key_path: string) -> ?void {
     auto cert_cstr# = cert_path.clone()
     auto key_cstr# = key_path.clone()
     auto *cert_ptr = cert_cstr.raw_ptr() as *char
@@ -900,7 +900,7 @@ impl TcpStream {
 // Opaque ownership wrapper for a TLS engine instance. The C handle never
 // leaves std/net: higher layers own a TlsSession, not a raw OpenSSL pointer.
 pub shape TlsSession (
-    nul *#handle: void
+    ?#handle: void
 )
 
 impl TlsSession@Encap {
@@ -912,45 +912,45 @@ impl TlsSession@Encap {
 
 impl TlsSession {
     pub fn empty() -> TlsSession {
-        auto nul *null_handle# = null:nul *void
-        return TlsSession(*handle = *null_handle)
+        auto ?null_handle# = null:?void
+        return TlsSession(?handle = ?null_handle)
     }
 
     pub fn client() -> TlsSession {
-        auto nul *created = net_tls_context_new()
-        return TlsSession(*handle = *created)
+        auto ?created = net_tls_context_new()
+        return TlsSession(?handle = ?created)
     }
 
     pub fn server() -> TlsSession {
-        auto nul *created = net_tls_server_context_new()
-        return TlsSession(*handle = *created)
+        auto ?created = net_tls_server_context_new()
+        return TlsSession(?handle = ?created)
     }
 
     pub fn server_with_cert_file(cert_path: string, key_path: string) -> TlsSession {
-        auto nul *created = net_tls_server_context_new_with_cert_file(cert_path, key_path)
-        return TlsSession(*handle = *created)
+        auto ?created = net_tls_server_context_new_with_cert_file(cert_path, key_path)
+        return TlsSession(?handle = ?created)
     }
 
     pub fn is_valid(self) -> bool {
-        return self.*handle != null
+        return self.?handle != null
     }
 
     fn live_handle(self) -> *void {
-        return self.*handle.unwrap()
+        return self.?handle.unwrap()
     }
 
     pub fn take(self#) -> TlsSession {
-        auto session = TlsSession(*handle = self.*handle)
-        auto nul *null_handle# = null:nul *void
-        self.*handle = *null_handle
+        auto session = TlsSession(?handle = self.?handle)
+        auto ?null_handle# = null:?void
+        self.?handle = ?null_handle
         return cede session
     }
 
     pub fn close(self#) {
         if self#.is_valid() {
             net_tls_close(self.live_handle())
-            auto nul *null_handle# = null:nul *void
-            self.*handle = *null_handle
+            auto ?null_handle# = null:?void
+            self.?handle = ?null_handle
         }
     }
 

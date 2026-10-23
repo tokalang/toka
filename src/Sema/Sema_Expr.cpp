@@ -125,6 +125,12 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
           !Info->TypeObj->isSmartPointer() && !Info->TypeObj->isReference();
       // Raw pointer payload access is an unsafe capability.  Handle-side #
       // remains identity-only and cannot manufacture it.
+      bool rawDirectPointeeCapability =
+          m_InUnsafeContext && Info->TypeObj && Info->TypeObj->isRawPointer() &&
+          Info->TypeObj->getPointeeType() &&
+          Info->TypeObj->getPointeeType()->isRawPointer() &&
+          Info->TypeObj->getPointeeType()->IsWritable &&
+          !Info->TypeObj->getPointeeType()->IsBlocked;
       bool rawPayloadCapability =
           m_InUnsafeContext && Info->TypeObj && Info->TypeObj->isRawPointer() &&
           Info->TypeObj->getPointeeType() && Info->TypeObj->getPointeeType()->IsWritable &&
@@ -137,7 +143,7 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
           declaredPayloadWritable;
       return applyPathFlowCeiling(
           {(declaredPayloadWritable || (!declarationOnly && isPlainOwnedValue) ||
-            rawPayloadCapability) &&
+            rawPayloadCapability || rawDirectPointeeCapability) &&
                (declarationOnly || Info->PayloadFlowWritable),
            Info->Permission.IdentityRebindable ||
                valueBindingCanRebindMemberHandle,
@@ -155,6 +161,15 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
       auto reference = getAccessCapability(Unary->RHS.get(), declarationOnly);
       return applyPathFlowCeiling({pointee && pointee->IsWritable, element->IsWritable,
                                   reference.PayloadFlowRestricted});
+    }
+    if (Unary->Op == TokenType::Star && E->ResolvedType &&
+        E->ResolvedType->isRawPointer() && E->ResolvedType->getPointeeType() &&
+        E->ResolvedType->getPointeeType()->isRawPointer()) {
+      auto directPointee = E->ResolvedType->getPointeeType();
+      auto baseCap = getAccessCapability(Unary->RHS.get(), declarationOnly);
+      return applyPathFlowCeiling(
+          {directPointee->IsWritable && !directPointee->IsBlocked,
+           E->ResolvedType->IsWritable || baseCap.HandleRebindable, false});
     }
     // A reference to a selected raw-storage element handle addresses the
     // slot, not the managed pointee. Its P is the slot's H. Preserve the
@@ -229,6 +244,38 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
       if (Type::stripMorphology(field.Name) != access.MemberName)
         continue;
       auto fieldType = getPhysicalType(field);
+      if (fieldType && fieldType->isRawPointer()) {
+        size_t declRawD = 0;
+        for (auto cur = fieldType; cur && cur->isRawPointer();
+             cur = cur->getPointeeType()) {
+          ++declRawD;
+        }
+        struct RawHatCapInfo {
+          bool HasNull = false;
+          bool Rebindable = false;
+        };
+        std::vector<RawHatCapInfo> reqRawHats;
+        for (size_t idx = 0; idx < access.Prefix.size(); ++idx) {
+          char c = access.Prefix[idx];
+          if (c == '*' || c == '?') {
+            RawHatCapInfo h;
+            h.HasNull = (c == '?');
+            if (idx + 1 < access.Prefix.size() && access.Prefix[idx + 1] == '#') {
+              h.Rebindable = true;
+              ++idx;
+            }
+            reqRawHats.push_back(h);
+          }
+        }
+        if (declRawD > 0 && reqRawHats.size() == declRawD + 1) {
+          const bool slotWritable =
+              (declarationOnly || reqRawHats[1].Rebindable) &&
+              field.IsRebindable && !field.IsRebindBlocked &&
+              base.PayloadWritable && !base.PayloadFlowRestricted;
+          return applyPathFlowCeiling(
+              {slotWritable, reqRawHats[0].Rebindable, !slotWritable});
+        }
+      }
       bool insulated = fieldType &&
                        (fieldType->isPointer() ||
                         fieldType->isSmartPointer() ||
@@ -251,11 +298,18 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
       // Conversely, a handle/reference field without P establishes a
       // restricted direct source: deeper projections cannot recover P from
       // their own syntax or from a later field declaration.
+      const bool rawDirectPointeeDeclared =
+          m_InUnsafeContext && fieldType && fieldType->isRawPointer() &&
+          fieldType->getPointeeType() &&
+          fieldType->getPointeeType()->isRawPointer() &&
+          fieldType->getPointeeType()->IsWritable &&
+          !fieldType->getPointeeType()->IsBlocked;
       const bool fieldStartsRestrictedFlow =
-          insulated && !fieldPayloadDeclared;
+          insulated && !fieldPayloadDeclared && !rawDirectPointeeDeclared;
       bool fieldPayloadWritable =
           !base.PayloadFlowRestricted && !fieldPayloadBlocked &&
-          (fieldPayloadDeclared || (!insulated && base.PayloadWritable));
+          (fieldPayloadDeclared || rawDirectPointeeDeclared ||
+           (!insulated && base.PayloadWritable));
       bool fieldHandleRebindable =
           field.IsRebindable && !field.IsRebindBlocked;
       return applyPathFlowCeiling(
@@ -513,7 +567,10 @@ AccessIntent Sema::getAccessIntent(Expr *E) {
     // independently by the caller, so a shared/reference projection cannot
     // gain payload write access here.
     auto capability = getAccessCapability(Member);
-    return {capability.PayloadWritable, false};
+    MemberAccessIntent access = parseMemberAccess(Member->Member);
+    bool outerHatRebind =
+        access.Prefix.size() >= 2 && access.Prefix[1] == '#';
+    return {capability.PayloadWritable, outerHatRebind};
   }
   if (auto *Index = dynamic_cast<ArrayIndexExpr *>(E))
     return getAccessIntent(Index->Array.get());
@@ -1834,7 +1891,7 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
         return morphKindFromType(M->ResolvedType);
       }
       char c = M->Member[0];
-      if (c == '*')
+      if (c == '*' || c == '?')
         return MorphKind::Raw;
       if (c == '^')
         return MorphKind::Unique;
@@ -1842,8 +1899,49 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
         return MorphKind::Shared;
       if (c == '&')
         return MorphKind::Ref;
+      if (access.Prefix.empty() && M->ResolvedType &&
+          M->ResolvedType->isRawPointer() && M->Object &&
+          M->Object->ResolvedType) {
+        auto resolvedObj = resolveType(M->Object->ResolvedType->getSoulType(), true);
+        auto shapeType = std::dynamic_pointer_cast<ShapeType>(resolvedObj);
+        ShapeDecl *SD = shapeType ? shapeType->Decl : nullptr;
+        if (!SD && resolvedObj)
+          SD = findVisibleShapeDecl(resolvedObj->getSoulName(), M->Loc);
+        if (SD && M->Index >= 0 && M->Index < (int)SD->Members.size()) {
+          auto declFieldType = getPhysicalType(SD->Members[M->Index]);
+          size_t declRawDepth = 0, resRawDepth = 0;
+          for (auto cur = declFieldType; cur && cur->isRawPointer();
+               cur = cur->getPointeeType())
+            ++declRawDepth;
+          for (auto cur = M->ResolvedType; cur && cur->isRawPointer();
+               cur = cur->getPointeeType())
+            ++resRawDepth;
+          if (declRawDepth >= 2 && resRawDepth == declRawDepth - 1)
+            return MorphKind::Raw;
+        }
+      }
     }
     return MorphKind::None;
+  }
+
+  if (auto *V = dynamic_cast<VariableExpr *>(E)) {
+    if (!V->IsMorphicExempt && V->ResolvedType &&
+        V->ResolvedType->isRawPointer() && CurrentScope) {
+      SymbolInfo *info = nullptr;
+      std::string actualName;
+      if (CurrentScope->findVariableWithDeref(V->Name, info, actualName) &&
+          info && info->TypeObj && info->TypeObj->isRawPointer()) {
+        size_t declRawDepth = 0, resRawDepth = 0;
+        for (auto cur = info->TypeObj; cur && cur->isRawPointer();
+             cur = cur->getPointeeType())
+          ++declRawDepth;
+        for (auto cur = V->ResolvedType; cur && cur->isRawPointer();
+             cur = cur->getPointeeType())
+          ++resRawDepth;
+        if (declRawDepth >= 2 && resRawDepth == declRawDepth - 1)
+          return MorphKind::Raw;
+      }
+    }
   }
 
   // Safe Constructors (Exceptions)
@@ -1852,7 +1950,8 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
       dynamic_cast<NewExpr *>(E) || dynamic_cast<AllocExpr *>(E) ||
       dynamic_cast<NullExpr *>(E) || dynamic_cast<UnsetExpr *>(E) ||
       dynamic_cast<StringExpr *>(E) ||
-      dynamic_cast<ArrayInitExpr *>(E)) {
+      dynamic_cast<ArrayInitExpr *>(E) ||
+      dynamic_cast<IfExpr *>(E) || dynamic_cast<MatchExpr *>(E)) {
     return MorphKind::Valid;
   }
 
@@ -1861,6 +1960,89 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
     return getSyntacticMorphology(U->Expression.get());
   }
   return MorphKind::None;
+}
+
+bool Sema::isUnnarrowedBareNullableRawExpr(const Expr *E) {
+  while (E) {
+    if (auto *U = dynamic_cast<const UnsafeExpr *>(E))
+      E = U->Expression.get();
+    else if (auto *C = dynamic_cast<const CedeExpr *>(E))
+      E = C->Value.get();
+    else if (auto *P = dynamic_cast<const PassExpr *>(E))
+      E = P->Value.get();
+    else
+      break;
+  }
+  if (!E || E->IsMorphicExempt || E->IsAbstractWholeValue)
+    return false;
+  auto resType = E->ResolvedType ? resolveType(E->ResolvedType, true) : nullptr;
+  if (!resType || !resType->isRawPointer() || !resType->IsNullable)
+    return false;
+
+  auto countRawDepth = [&](std::shared_ptr<toka::Type> t) -> size_t {
+    size_t d = 0;
+    for (auto cur = resolveType(t, true); cur && cur->isRawPointer();
+         cur = resolveType(cur->getPointeeType(), true)) {
+      ++d;
+    }
+    return d;
+  };
+  size_t resD = countRawDepth(resType);
+  if (resD == 0)
+    return false;
+
+  if (auto *V = dynamic_cast<const VariableExpr *>(E)) {
+    if (!CurrentScope)
+      return false;
+    SymbolInfo *info = nullptr;
+    std::string actualName = V->Name;
+    if (CurrentScope->findVariableWithDeref(V->Name, info, actualName) &&
+        info && !info->IsMorphicExempt && !info->IsAbstractWholeValue &&
+        info->TypeObj) {
+      size_t declD = countRawDepth(info->TypeObj);
+      return declD >= 1 && resD == declD;
+    }
+    return false;
+  }
+
+  if (auto *M = dynamic_cast<const MemberExpr *>(E)) {
+    MemberAccessIntent access = parseMemberAccess(M->Member);
+    if (!access.Prefix.empty() || access.IsMorphicIdentity)
+      return false;
+    if (!M->Object || !M->Object->ResolvedType)
+      return false;
+    auto resolvedObj =
+        resolveType(M->Object->ResolvedType->getSoulType(), true);
+    if (!resolvedObj)
+      return false;
+    auto shapeType = std::dynamic_pointer_cast<ShapeType>(resolvedObj);
+    ShapeDecl *SD = shapeType ? shapeType->Decl : nullptr;
+    if (!SD)
+      SD = findVisibleShapeDecl(
+          Type::stripMorphology(resolvedObj->getSoulName()), M->Loc);
+    if (!SD)
+      return false;
+    const ShapeMember *foundField = nullptr;
+    if (M->Index >= 0 && M->Index < (int)SD->Members.size()) {
+      foundField = &SD->Members[M->Index];
+    } else {
+      std::string fName = Type::stripMorphology(access.MemberName);
+      for (const auto &field : SD->Members) {
+        if (Type::stripMorphology(field.Name) == fName) {
+          foundField = &field;
+          break;
+        }
+      }
+    }
+    if (!foundField || foundField->IsMorphicExempt ||
+        isWholeGenericField(SD, *foundField))
+      return false;
+    auto fieldTy = getPhysicalType(*foundField);
+    size_t declD = countRawDepth(fieldTy);
+    return declD >= 1 && resD == declD;
+  }
+
+  return false;
 }
 
 bool Sema::checkStrictMorphology(ASTNode *Node, MorphKind Target,
@@ -2206,6 +2388,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       seenFields.insert(f.first);
 
       auto fieldTypeObj = checkExpr(f.second.get());
+      if (isUnnarrowedBareNullableRawExpr(f.second.get())) {
+        DiagnosticEngine::report(getLoc(f.second.get()),
+                                 DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+        HasError = true;
+      }
       Rec->FieldTransfers[fieldIndex] =
           qualifyAggregateTransfer(f.second.get(), fieldTypeObj);
       std::string fieldT = fieldTypeObj->toString();
@@ -2704,10 +2891,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
     if (shouldCollapse && current) {
-      while (current && (current->isPointer() || current->isReference() ||
-                         current->isSmartPointer())) {
-        // [Constitution 5.2] LHS Exemption: Nullable pointers collapse on LHS
-        // for assignment.
+      while (current && (current->isReference() || current->isSmartPointer())) {
         if (current->IsNullable && !m_InLHS) {
           break;
         }
@@ -2715,6 +2899,30 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (!inner)
           break;
         current = inner;
+      }
+      if (current && current->isRawPointer()) {
+        // [0.20 Raw Pointer 1-Layer Projection & Fix R-1]
+        // A bare raw pointer binding projects at most ONE raw pointer layer
+        // to its direct pointee, and ONLY when its outermost layer is non-null
+        // (either declared '*T' or narrowed via an active NonZeroFact).
+        // Never exempt LHS: an unguarded nullable '?p' cannot collapse on LHS.
+        bool outerNullable =
+            current->IsNullable && !hasActiveNonZeroFact(actualName);
+        if (!outerNullable) {
+          auto directPointee = current->getPointeeType();
+          if (directPointee) {
+            current = directPointee;
+            if (current->isRawPointer()) {
+              bool layer1Writable =
+                  m_InUnsafeContext && current->IsWritable &&
+                  !current->IsBlocked;
+              return current->withAttributes(
+                  layer1Writable, current->IsNullable, current->IsBlocked);
+            }
+          }
+        } else {
+          return current->withAttributes(false, true, current->IsBlocked);
+        }
       }
     }
 
@@ -2766,7 +2974,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           Info.Permission.IdentityRebindable ||
           (!Info.TypeObj->isPointer() && !Info.TypeObj->isSmartPointer() &&
            !Info.TypeObj->isReference() && Info.Permission.SoulWritable);
-      return current->withAttributes(identWritable, current->IsNullable);
+      bool identNullable =
+          current->IsNullable &&
+          !(current->isRawPointer() && hasActiveNonZeroFact(actualName) &&
+            (!m_InLHS || !m_IsAssignmentTarget || m_IsMemberBase));
+      return current->withAttributes(identWritable, identNullable);
     }
 
     return current;
@@ -2859,6 +3071,19 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         m_LastInitMask = 0;
         return targetType;
       }
+      if (targetType && targetType->isRawPointer() && !targetType->IsNullable &&
+          srcType && srcType->isNullType()) {
+        error(Cast, DiagID::ERR_NONZERO_RAW_NULL_FLOW, targetType->toString());
+        return targetType;
+      }
+      if (isUnnarrowedBareNullableRawExpr(Cast->Expression.get()) &&
+          targetType &&
+          (targetType->isPointer() || targetType->isSmartPointer() ||
+           targetType->isReference() || targetType->isAddrType() ||
+           targetType->isOAddrType())) {
+        error(Cast, DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+        return targetType;
+      }
       // Resolving an ascription target may already have diagnosed an unknown
       // type.  Do not turn that primary name-resolution error into a second,
       // misleading compatibility failure.
@@ -2866,6 +3091,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         error(Cast, DiagID::ERR_TYPE_ASCRIPTION_MISMATCH, Cast->TargetType,
               srcType ? srcType->toString() : "unknown");
       }
+      return targetType;
+    }
+
+    if (Cast->Kind == CastKind::Conversion &&
+        isUnnarrowedBareNullableRawExpr(Cast->Expression.get())) {
+      error(Cast, DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
       return targetType;
     }
 
@@ -3134,29 +3365,35 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           }
         }
       } else {
-        const bool comparesNull =
-            dynamic_cast<NullExpr *>(bin->RHS.get());
+        const bool rhsNull = dynamic_cast<NullExpr *>(bin->RHS.get()) != nullptr;
+        const bool lhsNull = dynamic_cast<NullExpr *>(bin->LHS.get()) != nullptr;
+        const bool comparesNull = rhsNull || lhsNull;
         if (bin->Op == "is" || bin->Op == "is!") {
           narrowThen = (bin->Op == "is" && !comparesNull) ||
                         (bin->Op == "is!" && comparesNull);
           narrowElse = bin->Op == "is" && comparesNull;
+        } else if (comparesNull && (bin->Op == "!=" || bin->Op == "==")) {
+          narrowThen = (bin->Op == "!=");
+          narrowElse = (bin->Op == "==");
         }
       }
 
-      if (!narrowsInitState && (narrowThen || narrowElse)) {
-        Expr *lhs = bin->LHS.get();
+      if (!narrowsInitState && (narrowThen || narrowElse) &&
+          !isUnnarrowedBareNullableRawExpr(bin->LHS.get()) &&
+          !isUnnarrowedBareNullableRawExpr(bin->RHS.get())) {
+        const bool lhsNull = dynamic_cast<NullExpr *>(bin->LHS.get()) != nullptr;
+        Expr *lhs = lhsNull ? bin->RHS.get() : bin->LHS.get();
         std::string path = getPathString(lhs);
         if (!path.empty()) {
           narrowed = true;
           narrowedVar = path;
         }
 
-        narrowedVariable = dynamic_cast<VariableExpr *>(lhs);
-        if (!narrowedVariable) {
-          if (auto *un = dynamic_cast<UnaryExpr *>(lhs)) {
-            narrowedVariable = dynamic_cast<VariableExpr *>(un->RHS.get());
-          }
+        Expr *lhsCore = lhs;
+        while (auto *un = dynamic_cast<UnaryExpr *>(lhsCore)) {
+          lhsCore = un->RHS.get();
         }
+        narrowedVariable = dynamic_cast<VariableExpr *>(lhsCore);
 
         if (narrowedVariable) {
           SymbolInfo *infoPtr = nullptr;
@@ -3169,33 +3406,56 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           }
         }
       }
+    } else if (ie->Condition) {
+      Expr *condCore = ie->Condition.get();
+      bool negated = false;
+      while (condCore) {
+        if (auto *cast = dynamic_cast<CastExpr *>(condCore);
+            cast && cast->Kind == CastKind::Implicit) {
+          condCore = cast->Expression.get();
+        } else if (auto *un = dynamic_cast<UnaryExpr *>(condCore);
+                   un && un->Op == TokenType::Bang) {
+          negated = !negated;
+          condCore = un->RHS.get();
+        } else {
+          break;
+        }
+      }
+      if (!negated && isUnnarrowedBareNullableRawExpr(condCore)) {
+        error(condCore, DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+      } else if (auto *un = dynamic_cast<UnaryExpr *>(condCore);
+                 un && un->SelectsHandleIdentity) {
+        std::string path = getPathString(un);
+        if (!path.empty()) {
+          narrowed = true;
+          narrowedVar = path;
+          narrowThen = !negated;
+          narrowElse = negated;
+        }
+      } else if (auto *me = dynamic_cast<MemberExpr *>(condCore);
+                 me && !parseMemberAccess(me->Member).Prefix.empty()) {
+        std::string path = getPathString(me);
+        if (!path.empty()) {
+          narrowed = true;
+          narrowedVar = path;
+          narrowThen = !negated;
+          narrowElse = negated;
+        }
+      }
     }
 
+    std::set<std::string> narrowedPathsSnapshot;
     auto applyNarrowing = [&]() {
       if (!narrowed)
         return;
+      narrowedPathsSnapshot = m_NarrowedPaths;
       m_NarrowedPaths.insert(narrowedVar);
-      if (!narrowedVariable)
-        return;
-      SymbolInfo *infoPtr = nullptr;
-      if (CurrentScope->findSymbol(narrowedVariable->Name, infoPtr) &&
-          infoPtr && infoPtr->TypeObj) {
-        infoPtr->TypeObj = infoPtr->TypeObj->withAttributes(
-            infoPtr->TypeObj->IsWritable, false);
-      }
     };
 
     auto restoreNarrowing = [&]() {
       if (!narrowed)
         return;
-      if (narrowedVariable) {
-        SymbolInfo *infoPtr = nullptr;
-        if (CurrentScope->findSymbol(narrowedVariable->Name, infoPtr) &&
-            infoPtr) {
-          *infoPtr = originalInfo;
-        }
-      }
-      m_NarrowedPaths.erase(narrowedVar);
+      m_NarrowedPaths = narrowedPathsSnapshot;
     };
 
     auto applyInitStateNarrowing = [&](PlaceState state) {
@@ -3522,13 +3782,17 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     auto condType = checkExpr(guard->Condition.get());
     if (condType->isUnknown())
       return condType;
-
-    auto *varExpr = dynamic_cast<VariableExpr *>(guard->Condition.get());
-    if (!varExpr) {
-      if (auto *unary = dynamic_cast<UnaryExpr *>(guard->Condition.get())) {
-        varExpr = dynamic_cast<VariableExpr *>(unary->RHS.get());
-      }
+    if (isUnnarrowedBareNullableRawExpr(guard->Condition.get())) {
+      error(guard->Condition.get(), DiagID::ERR_MORPHOLOGY_MISMATCH, "?",
+            "value");
+      return std::make_shared<UnitType>();
     }
+
+    Expr *condCore = guard->Condition.get();
+    while (auto *unary = dynamic_cast<UnaryExpr *>(condCore)) {
+      condCore = unary->RHS.get();
+    }
+    auto *varExpr = dynamic_cast<VariableExpr *>(condCore);
 
     // A projection guard may refine only an exact compiler-managed local
     // path.  This keeps the proof local to the observed member/index and
@@ -3652,15 +3916,13 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
 
       enterScope();
-      SymbolInfo nonNullInfo = *infoPtr;
-      if (nonNullInfo.TypeObj) {
-        nonNullInfo.TypeObj = nonNullInfo.TypeObj->withAttributes(
-            nonNullInfo.TypeObj->IsWritable, false,
-            nonNullInfo.TypeObj->IsBlocked);
+      auto savedGuardNarrowed = m_NarrowedPaths;
+      if (isPtrNullable) {
+        m_NarrowedPaths.insert(actualName);
       }
-      CurrentScope->define(actualName, nonNullInfo);
 
       checkStmt(guard->Then.get());
+      m_NarrowedPaths = std::move(savedGuardNarrowed);
       exitScope();
       thenJumps = allPathsJump(guard->Then.get());
       masksThen = captureMasks();
@@ -3675,11 +3937,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
               DiagID::ERR_SEMA_GUARD_CONDITION_MUST_BE_A_MAY_ZERO_RAW_TYPE);
       }
       enterScope();
-      if (isProjectionGuard)
+      auto savedGuardNarrowed = m_NarrowedPaths;
+      if (isProjectionGuard && isPtrNullable)
         m_NarrowedPaths.insert(guardedPath);
       checkStmt(guard->Then.get());
-      if (isProjectionGuard)
-        m_NarrowedPaths.erase(guardedPath);
+      m_NarrowedPaths = std::move(savedGuardNarrowed);
       exitScope();
       thenJumps = allPathsJump(guard->Then.get());
       masksThen = captureMasks();
@@ -3792,7 +4054,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
   } else if (auto *le = dynamic_cast<LoopExpr *>(E)) {
     if (le->Condition) {
       auto condTy = checkExpr(le->Condition.get(), toka::Type::fromString("bool"));
-      if (condTy && !condTy->isBoolean()) {
+      if (isUnnarrowedBareNullableRawExpr(le->Condition.get())) {
+        error(le->Condition.get(), DiagID::ERR_MORPHOLOGY_MISMATCH, "?",
+              "value");
+      } else if (condTy && !condTy->isBoolean()) {
         error(le->Condition.get(), DiagID::ERR_OPERAND_TYPE_MISMATCH, "loop condition", "bool", condTy->toString());
       }
       std::set<std::string> conditionVars;
@@ -4846,6 +5111,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     } else {
       valTypeObj = checkExpr(pe->Value.get());
       valType = valTypeObj->toString();
+      if (isUnnarrowedBareNullableRawExpr(pe->Value.get())) {
+        DiagnosticEngine::report(getLoc(pe->Value.get()),
+                                 DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+        HasError = true;
+      }
     }
 
     std::set<std::string> passLifeDeps = m_LastLifeDependencies;
@@ -5452,6 +5722,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         // [Safety Pillar 3] Uninit allocation bypasses constructor evaluation
       } else {
         auto InitTypeObj = checkExpr(New->Initializer.get(), resolvedType);
+        if (isUnnarrowedBareNullableRawExpr(New->Initializer.get())) {
+          DiagnosticEngine::report(getLoc(New->Initializer.get()),
+                                   DiagID::ERR_MORPHOLOGY_MISMATCH, "?",
+                                   "value");
+          HasError = true;
+        }
       }
       // Re-propagate the mask from initializer to NewExpr
       // (This will be picked up by checkExpr wrapper and passed to
@@ -5498,6 +5774,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     }
     if (AllocE->Initializer) {
       checkExpr(AllocE->Initializer.get(), baseTypeObj);
+      if (isUnnarrowedBareNullableRawExpr(AllocE->Initializer.get())) {
+        DiagnosticEngine::report(getLoc(AllocE->Initializer.get()),
+                                 DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+        HasError = true;
+      }
     }
     // [FIX] Update with mangled name for CodeGen, but only if it's NOT an unresolved generic param
     if (baseType.find('\'') == std::string::npos) {
@@ -5597,13 +5878,136 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
           stage0PreMutationCallSnapshot->Revision);
     }
     bool oldAllow = m_AllowPermissionSuffix;
+    bool oldDisableCollapse = m_DisableSoulCollapse;
     m_AllowPermissionSuffix = true; // [NEW] Grant suffix allowance for explicit method call objects
+    if (Met->Method == "unwrap") {
+      if (auto *varObj = dynamic_cast<VariableExpr *>(Met->Object.get())) {
+        SymbolInfo *varInfo = nullptr;
+        std::string actualVarName;
+        if (CurrentScope->findVariableWithDeref(varObj->Name, varInfo,
+                                                actualVarName) &&
+            varInfo && varInfo->TypeObj && varInfo->TypeObj->isRawPointer() &&
+            varInfo->TypeObj->IsNullable) {
+          m_DisableSoulCollapse = true;
+        }
+      }
+    }
     auto ObjTypeObj = Met->ObjectIsPrechecked && Met->Object->ResolvedType
                           ? Met->Object->ResolvedType
                           : checkExpr(Met->Object.get());
+    m_DisableSoulCollapse = oldDisableCollapse;
     m_AllowPermissionSuffix = oldAllow;
-    
+
+    auto countRawDepth = [&](std::shared_ptr<toka::Type> t) -> size_t {
+      size_t d = 0;
+      for (auto cur = resolveType(t, true); cur && cur->isRawPointer();
+           cur = resolveType(cur->getPointeeType(), true)) {
+        ++d;
+      }
+      return d;
+    };
+    auto didReceiverCollapseRawLayer =
+        [&](const Expr *recv, std::shared_ptr<toka::Type> evalTy) -> bool {
+      while (recv) {
+        if (auto *U = dynamic_cast<const UnsafeExpr *>(recv))
+          recv = U->Expression.get();
+        else if (auto *P = dynamic_cast<const PostfixExpr *>(recv))
+          recv = P->LHS.get();
+        else if (auto *C = dynamic_cast<const CedeExpr *>(recv))
+          recv = C->Value.get();
+        else if (auto *Pa = dynamic_cast<const PassExpr *>(recv))
+          recv = Pa->Value.get();
+        else
+          break;
+      }
+      if (!recv || recv->IsMorphicExempt || recv->IsAbstractWholeValue)
+        return false;
+      size_t resD = countRawDepth(evalTy);
+      if (auto *V = dynamic_cast<const VariableExpr *>(recv)) {
+        if (!CurrentScope)
+          return false;
+        SymbolInfo *info = nullptr;
+        std::string actualName = V->Name;
+        if (CurrentScope->findVariableWithDeref(V->Name, info, actualName) &&
+            info && !info->IsMorphicExempt && !info->IsAbstractWholeValue &&
+            info->TypeObj) {
+          size_t declD = countRawDepth(info->TypeObj);
+          return declD > resD;
+        }
+        return false;
+      }
+      if (auto *M = dynamic_cast<const MemberExpr *>(recv)) {
+        MemberAccessIntent access = parseMemberAccess(M->Member);
+        if (!access.Prefix.empty() || access.IsMorphicIdentity)
+          return false;
+        if (!M->Object || !M->Object->ResolvedType)
+          return false;
+        auto resolvedObj =
+            resolveType(M->Object->ResolvedType->getSoulType(), true);
+        if (!resolvedObj)
+          return false;
+        auto shapeType = std::dynamic_pointer_cast<ShapeType>(resolvedObj);
+        ShapeDecl *SD = shapeType ? shapeType->Decl : nullptr;
+        if (!SD)
+          SD = findVisibleShapeDecl(
+              Type::stripMorphology(resolvedObj->getSoulName()), M->Loc);
+        if (!SD)
+          return false;
+        const ShapeMember *foundField = nullptr;
+        if (M->Index >= 0 && M->Index < (int)SD->Members.size()) {
+          foundField = &SD->Members[M->Index];
+        } else {
+          std::string fName = Type::stripMorphology(access.MemberName);
+          for (const auto &field : SD->Members) {
+            if (Type::stripMorphology(field.Name) == fName) {
+              foundField = &field;
+              break;
+            }
+          }
+        }
+        if (!foundField || foundField->IsMorphicExempt ||
+            isWholeGenericField(SD, *foundField))
+          return false;
+        auto fieldTy = getPhysicalType(*foundField);
+        size_t declD = countRawDepth(fieldTy);
+        return declD > resD;
+      }
+      return false;
+    };
+
     auto resolvedObjType = resolveType(ObjTypeObj);
+    if (Met->Method != "unwrap" && Met->Method != "unset" && resolvedObjType &&
+        resolvedObjType->isRawPointer()) {
+      const bool receiverCollapsedRawLayer =
+          didReceiverCollapseRawLayer(Met->Object.get(), resolvedObjType);
+      if (resolvedObjType->IsNullable) {
+        DiagnosticEngine::report(getLoc(Met), DiagID::ERR_MAY_ZERO_RAW_ACCESS,
+                                 resolvedObjType->toString());
+        HasError = true;
+        resolvedObjType = resolveType(resolvedObjType->getSoulType());
+      } else if (receiverCollapsedRawLayer) {
+        error(Met, DiagID::ERR_NOT_A_STRUCT, Met->Method,
+              resolvedObjType->toString());
+        return toka::Type::fromString("unknown");
+      } else {
+        auto peeled = resolveType(resolvedObjType->getPointeeType());
+        if (peeled && peeled->isRawPointer()) {
+          if (peeled->IsNullable) {
+            DiagnosticEngine::report(getLoc(Met),
+                                     DiagID::ERR_MAY_ZERO_RAW_ACCESS,
+                                     peeled->toString());
+            HasError = true;
+            resolvedObjType = resolveType(peeled->getSoulType());
+          } else {
+            error(Met, DiagID::ERR_NOT_A_STRUCT, Met->Method,
+                  peeled->toString());
+            return toka::Type::fromString("unknown");
+          }
+        } else {
+          resolvedObjType = peeled;
+        }
+      }
+    }
     std::string ObjType =
         resolvedObjType ? resolvedObjType->toString() : "unknown";
 
@@ -5815,7 +6219,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                            plannedDynamicCede[i]),
                       param.Name, param.Loc);
                 }
-                if (!methodArgumentCompatible(expectedTy, argTy))
+                if (expectedTy && expectedTy->isRawPointer() &&
+                    isUnnarrowedBareNullableRawExpr(Met->Args[i].get())) {
+                  error(Met->Args[i].get(), DiagID::ERR_MORPHOLOGY_MISMATCH,
+                        expectedTy->IsNullable ? "?" : "*", "value");
+                } else if (!methodArgumentCompatible(expectedTy, argTy))
                   error(Met->Args[i].get(),
                         DiagID::ERR_SEMA_TYPE_MISMATCH_IN_METHOD_ARGUMENT_EXPECTED,
                         std::to_string(i + 1),
@@ -6714,7 +7122,11 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
                         return Type::fromString("unknown");
                     }
 
-                    if (!methodArgumentCompatible(expectedParamTy, argTy)) {
+                    if (expectedParamTy && expectedParamTy->isRawPointer() &&
+                        isUnnarrowedBareNullableRawExpr(Met->Args[i].get())) {
+                        error(Met->Args[i].get(), DiagID::ERR_MORPHOLOGY_MISMATCH,
+                              expectedParamTy->IsNullable ? "?" : "*", "value");
+                    } else if (!methodArgumentCompatible(expectedParamTy, argTy)) {
                         error(Met->Args[i].get(), DiagID::ERR_SEMA_TYPE_MISMATCH_IN_METHOD_ARGUMENT_EXPECTED, std::to_string(i + 1),
                               FD->Args[i + 1].Type == "usize" ? "usize" : expectedParamTy->toString(),
                               argTy->toString());
@@ -6778,6 +7190,30 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         // declaration's formal indices so trusted std/atomic methods share the
         // same Ordering legality table as the core wrappers.
         validateAtomicOrderingArguments(FD, Met->Args, 1);
+
+        // [0.20 NonZeroFact Invalidation — Class 3 (Method Call)]
+        if (requiresMutableBorrow && !objPath.empty()) {
+          invalidateNonZeroFactForPath(objPath);
+        }
+        for (size_t i = 0; i < Met->Args.size(); ++i) {
+          Expr *argExpr = Met->Args[i].get();
+          bool argMutatesSlot = false;
+          if (auto *u = dynamic_cast<UnaryExpr *>(argExpr)) {
+            if (u->IsRebindable)
+              argMutatesSlot = true;
+          } else if (auto *m = dynamic_cast<MemberExpr *>(argExpr)) {
+            if (parseMemberAccess(m->Member).HasRebindMarker)
+              argMutatesSlot = true;
+          }
+          if (FD && i + 1 < FD->Args.size() &&
+              (FD->Args[i + 1].IsRebindable || FD->Args[i + 1].IsValueMutable)) {
+            argMutatesSlot = true;
+          }
+          if (argMutatesSlot) {
+            invalidateNonZeroFactForPath(getPathString(argExpr));
+          }
+        }
+        invalidateAliasedNonZeroFacts();
 
         auto retType =
             FD && FD->ResolvedReturnType
@@ -7167,7 +7603,8 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       m_IsUnsetInitCall = true;
       return ObjTypeObj;
     }
-    if (Met->Method == "unwrap" && ObjTypeObj && ObjTypeObj->IsNullable) {
+    if (Met->Method == "unwrap" && ObjTypeObj &&
+        (ObjTypeObj->IsNullable || ObjTypeObj->isRawPointer())) {
       return ObjTypeObj->withAttributes(ObjTypeObj->IsWritable, false);
     }
 
@@ -7545,6 +7982,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       expectedElemType = m_ExpectedType->getArrayElementType();
     }
     auto elemType = checkExpr(Repeat->Value.get(), expectedElemType);
+    if (isUnnarrowedBareNullableRawExpr(Repeat->Value.get())) {
+      error(Repeat->Value.get(), DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+    }
 
     // [FIX] Substitution for Count
     Repeat->Count = foldGenericConstant(std::move(Repeat->Count));
@@ -7577,8 +8017,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       ArrLit->Elements[0] =
           foldGenericConstant(std::move(ArrLit->Elements[0])); // [FIX]
       auto ElemTyObj = checkExpr(ArrLit->Elements[0].get(), expectedElemType);
+      if (isUnnarrowedBareNullableRawExpr(ArrLit->Elements[0].get())) {
+        error(ArrLit->Elements[0].get(), DiagID::ERR_MORPHOLOGY_MISMATCH, "?",
+              "value");
+      }
       for (size_t i = 1; i < ArrLit->Elements.size(); ++i) {
         checkExpr(ArrLit->Elements[i].get(), ElemTyObj);
+        if (isUnnarrowedBareNullableRawExpr(ArrLit->Elements[i].get())) {
+          error(ArrLit->Elements[i].get(), DiagID::ERR_MORPHOLOGY_MISMATCH, "?",
+                "value");
+        }
       }
       std::string ElemTy = ElemTyObj->toString();
       return toka::Type::fromString(
@@ -7590,6 +8038,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         me, me->Target.get(), nullptr, TransferDestination::MatchBinding,
         TransferEligibilityContext::MatchBinding, "match_binding");
     auto targetTypeObj = checkExpr(me->Target.get());
+    if (isUnnarrowedBareNullableRawExpr(me->Target.get())) {
+      error(me->Target.get(), DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+    }
     me->TransfersPayloadOwnership =
         dynamic_cast<CedeExpr *>(me->Target.get()) != nullptr;
     std::string targetType = targetTypeObj->toString();

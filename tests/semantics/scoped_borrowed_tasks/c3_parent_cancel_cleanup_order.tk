@@ -86,15 +86,15 @@ fn cancellable_parent() -> async i32 {
 
 fn supervisor() -> async i32 {
     auto parent_task = cancellable_parent()
-    auto nul *parent_tcb = task_get_coro_handle<i32>(parent_task)
-    if *parent_tcb != null { toka_task_start(parent_tcb.unwrap()) }
+    auto ?parent_tcb = task_get_coro_handle<i32>(parent_task)
+    if ?parent_tcb != null { toka_task_start(parent_tcb.unwrap()) }
 
     // Allow parent to start, create children, and suspend in await
     sleep_async(15:i32).await
 
     // External cancellation injected into parent task!
     record_event(EVT_EXTERNAL_CANCEL_INJECTED)
-    if *parent_tcb != null {
+    if ?parent_tcb != null {
         toka_task_request_cancel(parent_tcb.unwrap())
     }
 

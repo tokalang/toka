@@ -45,12 +45,12 @@ fn parent() -> async i32 {
 
 fn supervisor() -> async i32 {
     auto p = parent()
-    auto nul *ptcb = task_get_coro_handle<i32>(p)
-    if *ptcb != null { toka_task_start(ptcb.unwrap()) }
+    auto ?ptcb = task_get_coro_handle<i32>(p)
+    if ?ptcb != null { toka_task_start(ptcb.unwrap()) }
     // Wait until c1 finishes (30ms) and parent is inside cancel_and_join(scope#).await waiting on c2
     sleep_async(45:i32).await
     rec(25:i32)
-    if *ptcb != null { toka_task_request_cancel(ptcb.unwrap()) }
+    if ?ptcb != null { toka_task_request_cancel(ptcb.unwrap()) }
     auto _ = p.await?
     sleep_async(60:i32).await
     return 0:i32

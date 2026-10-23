@@ -1,5 +1,5 @@
-error[E04606]: Type ascription '*Data' is incompatible with expression type 'null'
+error[E0483]: Plain raw pointer type '*Data' cannot contain or test null; use '?T' for a may-zero raw address
  --> tests/fail/strict_null_identity.tk:19:19
     |
- 19 |     auto *d = null:*Data // EXPECT: error[E04606]:
+ 19 |     auto *d = null:*Data // EXPECT: error[E0483]:
     |                   ^

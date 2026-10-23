@@ -162,7 +162,8 @@ std::string canonicalPayload(
   out << "{\"schema\":\"toka.trusted-memory-evidence\",\"version\":"
       << MemoryEvidenceCache::SchemaVersion << ",\"compiler_version\":\""
       << TOKA_COMPILER_INTERFACE_VERSION << "\",\"interface_format\":\""
-      << TOKA_INTERFACE_FORMAT_VERSION << "\",\"encap_epoch\":\""
+      << TOKA_INTERFACE_FORMAT_VERSION << "\",\"language_epoch\":\""
+      << escapeJSON(getActiveLanguageEpoch()) << "\",\"encap_epoch\":\""
       << escapeJSON(getActiveEncapEpoch()) << "\",\"target_triple\":\""
       << escapeJSON(targetTriple) << "\",\"source_hash\":\""
       << escapeJSON(sourceHash) << "\",\"functions\":"
@@ -253,7 +254,9 @@ bool MemoryEvidenceCache::write(const std::string &path,
   out << "{\"schema\":\"toka.trusted-memory-evidence\",\"version\":"
       << SchemaVersion << ",\"compiler_version\":\""
       << TOKA_COMPILER_INTERFACE_VERSION << "\",\"interface_format\":\""
-      << TOKA_INTERFACE_FORMAT_VERSION << "\",\"target_triple\":\""
+      << TOKA_INTERFACE_FORMAT_VERSION << "\",\"language_epoch\":\""
+      << escapeJSON(getActiveLanguageEpoch()) << "\",\"encap_epoch\":\""
+      << escapeJSON(getActiveEncapEpoch()) << "\",\"target_triple\":\""
       << escapeJSON(targetTriple) << "\",\"source_hash\":\""
       << escapeJSON(sourceHash) << "\",\"evidence_sha256\":\""
       << evidenceDigest << "\",\"object_sha256\":\""
@@ -309,6 +312,8 @@ MemoryEvidenceStatus MemoryEvidenceCache::load(
   };
   if (!matches("compiler_version", TOKA_COMPILER_INTERFACE_VERSION) ||
       !matches("interface_format", TOKA_INTERFACE_FORMAT_VERSION) ||
+      !matches("language_epoch", getActiveLanguageEpoch()) ||
+      !matches("encap_epoch", getActiveEncapEpoch()) ||
       !matches("target_triple", expectedTargetTriple) ||
       !matches("source_hash", expectedSourceHash))
     return fail(MemoryEvidenceStatus::IdentityMismatch,

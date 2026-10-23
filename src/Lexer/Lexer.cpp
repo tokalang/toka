@@ -542,12 +542,17 @@ Token Lexer::punctuation() {
   // How to handle standalone # ?
   case '#':
     return Token{TokenType::TokenWrite, "#", line, col};
-  case '?':
-    if (peek() == '?') {
-      advance();
-      return Token{TokenType::DoubleQuestion, "??", line, col};
+  case '?': {
+    Token t{TokenType::TokenNull, "?", line, col};
+    if (match('#')) {
+      t.IsSwappablePtr = true;
+      t.Text += "#";
+    } else if (match('$')) {
+      t.IsBlocked = true;
+      t.Text += "$";
     }
-    return Token{TokenType::TokenNull, "?", line, col};
+    return t;
+  }
   case '$':
     return Token{TokenType::TokenNone, "$", line, col};
 

@@ -98,17 +98,18 @@ counter = 3
 ### Absence domains
 
 Safe nullable payloads and owning handles have been permanently removed:
-`T?` reports E0484, `nul ^T` / `nul ~T` report E0485, `none` reports E0486,
-and nullable postfix/assertion syntax reports E0487. The parser recognizes these
-spellings only to provide migration diagnostics; they are not language types
-or values and have no Sema or CodeGen representation.
+`T?` reports E0484, `nul ^T` / `nul ~T` report E0485, legacy `nul *T` reports
+E0488, `none` reports E0486, and nullable postfix/assertion syntax (`p?`, `p??`)
+reports E0487. The parser recognizes these spellings only to provide migration
+diagnostics; they are not language types or values and have no Sema or CodeGen
+representation.
 
 Toka distinguishes operation outcomes, explicit zero-or-one storage, and
 physical zero addresses:
 
 | Domain | Surface form | Empty state | Meaning |
 | :--- | :--- | :--- | :--- |
-| Raw may-zero address | `nul *T` | `null` | An unsafe/FFI address may physically be zero |
+| Raw may-zero address | `?T` | `null` | An unsafe/FFI raw address may physically be zero |
 | Raw non-zero address | `*T` | none | The raw address is non-zero, although dereference still requires `unsafe` |
 | Operation miss | `T \| miss` | `miss` | An operation did not produce a `T` |
 | General optional value | `Option<T>` | `Option<T>::None` | A stored value explicitly has zero-or-one cardinality |
@@ -116,16 +117,20 @@ physical zero addresses:
 For example:
 
 ```toka
-auto nul *ptr = null:nul *i32
+auto ?ptr = null:?i32
 auto value = lookup(key) // declared T | miss
 auto result = Option<i32>::None:Option<i32>
 ```
 
 Plain `*T` cannot be constructed from, assigned from, returned from, or
-compared with `null`. `*T` widens to `nul *T`; the reverse direction requires
-the explicit checked `pointer.unwrap()`. `nul` is therefore a raw-pointer
-physical property, not a general nullable type constructor. Borrow, unique,
-and shared handles always designate valid objects in Safe Toka.
+compared with `null` (even inside `unsafe`). `*T` widens to `?T` at the
+outermost pointer value layer (`**T` widens to `?*T`, while inner pointee
+nullability is strictly invariant); the reverse direction requires explicit
+`guard ?ptr`, `if ?ptr != null`, or `(?ptr).unwrap()`. `?` is therefore a
+raw-pointer-only physical hat (composing with `*` and `#` in multi-layer raw
+chains such as `**T`, `*?T`, `?*T`, `??T`, `?#T`), not a general nullable type
+constructor. Borrow, unique, and shared handles always designate valid objects
+in Safe Toka.
 
 When a persistent absence reason matters, define it nominally and keep the
 operation miss separate:
@@ -1160,7 +1165,7 @@ External functions use `extern fn`.
 
 ```toka
 extern fn sleep(seconds: i32) -> i32
-extern fn libc_free(nul *ptr: void) -> void
+extern fn libc_free(?ptr: void) -> void
 ```
 
 Raw allocation and deallocation are explicit and unsafe.
@@ -1174,7 +1179,7 @@ unsafe free *node
 
 Built-in `alloc` is an infallible, non-zero allocation operation: allocation
 failure terminates instead of producing a zero `*T`. A fallible native
-allocator must expose its result as `nul *T` (for example `libc_malloc`) and
+allocator must expose its result as `?T` (for example `libc_malloc`) and
 the caller must check or unwrap it explicitly.
 
 For a raw array, the count on `free[count]` is the number of live elements

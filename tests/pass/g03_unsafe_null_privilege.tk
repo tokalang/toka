@@ -1,21 +1,21 @@
 import std/io::println
 
-extern fn libc_free(*ptr: void) -> void
+extern fn libc_free(?ptr: void) -> void
 
 fn main() -> i32 {
     auto val# = 42
-    // p is a non-nullable raw pointer, initialized to the address of val
-    auto *#p = *#val:*i32
+    // p is a nullable raw pointer, initialized to the address of val
+    auto ?#p = *#val:?i32
 
     unsafe {
-        // 1. We can pass null to an extern fn expecting a non-nullable raw pointer
+        // 1. We can pass null to an extern fn expecting a nullable raw pointer
         libc_free(null)
 
-        // 2. We can assign null to a non-nullable raw pointer inside unsafe block
-        *p = null
+        // 2. We can assign null to a nullable raw pointer inside unsafe block
+        ?p = null
 
-        // 3. We can compare a non-nullable raw pointer with null inside unsafe block
-        if *p == null {
+        // 3. We can compare a nullable raw pointer with null inside unsafe block
+        if ?p == null {
             println("p is null (verified)")
         }
     }

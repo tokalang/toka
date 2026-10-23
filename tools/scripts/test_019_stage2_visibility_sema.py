@@ -851,9 +851,10 @@ fn main() -> i32 { return 0 }
             )
         )
         receipts.append(
-            expect_pass(
+            expect_fail(
                 "XP-01_encap_pub_field_list_still_accepted_in_018",
                 [str(tokac), "--encap-epoch=0.18", "--check-only", str(xp01_bad)],
+                "unsupported --encap-epoch value '0.18'",
             )
         )
 
@@ -872,7 +873,7 @@ fn main() -> i32 { return 0 }
             expect_fail(
                 "XP-01b_mix_inline_vis_and_encap_field_list_rejected_018",
                 [str(tokac), "--encap-epoch=0.18", "--check-only", str(xp01_mix_bad)],
-                "Cannot mix inline shape field visibility",
+                "unsupported --encap-epoch value '0.18'",
             )
         )
         receipts.append(

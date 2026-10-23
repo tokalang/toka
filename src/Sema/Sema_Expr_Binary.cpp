@@ -96,7 +96,8 @@ static bool selectsHandleIdentity(const Expr *E) {
 
   auto *U = dynamic_cast<const UnaryExpr *>(E);
   return U && (U->Op == TokenType::Caret || U->Op == TokenType::Tilde ||
-               U->Op == TokenType::Ampersand);
+               U->Op == TokenType::Ampersand ||
+               (U->Op == TokenType::Star && U->SelectsHandleIdentity));
 }
 
 // Conditional todo state is associated only with a whole local binding.
@@ -254,14 +255,21 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     // rejection outlives the validated pass.  A handle-valued source keeps the
     // pointer formal so a genuine rebind is still checked as one.
     if (destinationType && destinationType->isRawPointer()) {
+      auto pointee = destinationType->getPointeeType();
       auto sourceType =
           queryExplicitCedeStage0NonCallType(Bin->RHS.get(), destinationType);
       const bool sourceIsHandle =
           sourceType && !sourceType->isUnknown() &&
           (sourceType->isPointer() || sourceType->isSmartPointer() ||
            sourceType->isFunction() || sourceType->isDynFn());
-      if (!sourceIsHandle) {
-        if (auto pointee = destinationType->getPointeeType())
+      auto *lhsMember = dynamic_cast<MemberExpr *>(Bin->LHS.get());
+      const bool bareMultiLayerRawStore =
+          (dynamic_cast<VariableExpr *>(Bin->LHS.get()) != nullptr ||
+           (lhsMember != nullptr &&
+            parseMemberAccess(lhsMember->Member).Prefix.empty())) &&
+          pointee && pointee->isRawPointer();
+      if (!sourceIsHandle || bareMultiLayerRawStore) {
+        if (pointee)
           destinationType = resolveExplicitCedeStage0TypeReadOnly(pointee);
       }
     }
@@ -781,11 +789,74 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     // [Constitution 1.3] Covenant-based Writability Check
     bool isLHSWritable = false;
     bool isRebind = false;
+    bool lhsIsOneLayerCollapsedMultiRaw = false;
+    bool lhsIsUnnarrowedBareNullableRaw = false;
+    {
+      const Expr *strippedLHS = Bin->LHS.get();
+      while (auto *C = dynamic_cast<const CastExpr *>(strippedLHS))
+        strippedLHS = C->Expression.get();
+      auto countRawDepth = [](std::shared_ptr<Type> t) -> size_t {
+        size_t d = 0;
+        while (t && t->isRawPointer()) {
+          ++d;
+          t = t->getPointeeType();
+        }
+        return d;
+      };
+      if (auto *V = dynamic_cast<const VariableExpr *>(strippedLHS)) {
+        if (!V->IsMorphicExempt && !V->IsAbstractWholeValue && lhsType &&
+            lhsType->isRawPointer()) {
+          SymbolInfo *info = nullptr;
+          std::string actualName = V->Name;
+          if (CurrentScope->findVariableWithDeref(V->Name, info, actualName) &&
+              info && info->TypeObj) {
+            size_t declD = countRawDepth(info->TypeObj);
+            size_t resD = countRawDepth(lhsType);
+            if (declD >= 2 && resD == declD - 1)
+              lhsIsOneLayerCollapsedMultiRaw = true;
+            else if (declD >= 1 && resD == declD && lhsType->IsNullable)
+              lhsIsUnnarrowedBareNullableRaw = true;
+          }
+        }
+      } else if (auto *M = dynamic_cast<const MemberExpr *>(strippedLHS)) {
+        if (!M->IsMorphicExempt && !M->IsAbstractWholeValue && lhsType &&
+            lhsType->isRawPointer() &&
+            parseMemberAccess(M->Member).Prefix.empty() && M->Object &&
+            M->Object->ResolvedType) {
+          auto objType = resolveType(M->Object->ResolvedType, true);
+          while (objType && (objType->isPointer() || objType->isSmartPointer() ||
+                             objType->isReference()))
+            objType = objType->getPointeeType();
+          if (objType) {
+            std::string soul = Type::stripMorphology(objType->getSoulName());
+            auto it = ShapeMap.find(soul);
+            if (it != ShapeMap.end() && it->second) {
+              std::string fName =
+                  Type::stripMorphology(parseMemberAccess(M->Member).StrippedName);
+              for (const auto &field : it->second->Members) {
+                if (Type::stripMorphology(field.Name) == fName) {
+                  auto fieldTy = field.ResolvedType ? field.ResolvedType
+                                                    : getPhysicalType(field);
+                  size_t declD = countRawDepth(fieldTy);
+                  size_t resD = countRawDepth(lhsType);
+                  if (declD >= 2 && resD == declD - 1)
+                    lhsIsOneLayerCollapsedMultiRaw = true;
+                  else if (declD >= 1 && resD == declD && lhsType->IsNullable)
+                    lhsIsUnnarrowedBareNullableRaw = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
 
     // Detect Rebind: Assigning to the pointer variable/handle itself
     // e.g. "p = ..." where p is smart pointer, or "~#p = ..."
     // Constitution 1.3: Reference rebinding is ALSO a Reseat operation.
-    if (!isImplicitDerefAssign) {
+    if (!isImplicitDerefAssign && !lhsIsOneLayerCollapsedMultiRaw &&
+        !lhsIsUnnarrowedBareNullableRaw) {
       if (explicitHandleTarget || lhsType->isPointer() ||
           lhsType->isSmartPointer() || isRefAssign) {
         isRebind = true;
@@ -961,7 +1032,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         
         // This assignment reaches a payload path.  Handle rebindability
         // (for example ^#p) is not payload write permission.
-        if (InfoPtr->IsSoulMutable()) {
+        if (!lhsIsOneLayerCollapsedMultiRaw && !lhsIsUnnarrowedBareNullableRaw &&
+            InfoPtr->IsSoulMutable()) {
             isLHSWritable = true;
         }
       }
@@ -1006,16 +1078,25 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     // is independent of the physical type's writable marker, which is still
     // needed for ABI and overload compatibility.
     AccessCapability lhsCapability = getAccessCapability(Bin->LHS.get());
-    if (isRebind && lhsCapability.HandleRebindable)
+    if (lhsIsOneLayerCollapsedMultiRaw)
+      lhsCapability.PayloadWritable = lhsType && lhsType->IsWritable;
+    const bool rhsIsHandleOrNullForBareNullable =
+        rhsType && (rhsType->isPointer() || rhsType->isSmartPointer() ||
+                    rhsType->isReference() || rhsType->isNullType());
+    if ((isRebind ||
+         (lhsIsUnnarrowedBareNullableRaw && rhsIsHandleOrNullForBareNullable)) &&
+        lhsCapability.HandleRebindable)
       isLHSWritable = true;
     bool payloadCapabilityDenied =
         assignmentKind == AssignmentSemanticKind::Payload &&
+        !lhsIsUnnarrowedBareNullableRaw &&
         !lhsCapability.PayloadWritable && !isUnsetInit;
     bool handleCapabilityDenied =
         assignmentKind == AssignmentSemanticKind::Handle &&
         !lhsCapability.HandleRebindable;
     bool payloadFlowDenied =
         assignmentKind == AssignmentSemanticKind::Payload &&
+        !lhsIsUnnarrowedBareNullableRaw &&
         lhsCapability.PayloadFlowRestricted &&
         !lhsCapability.PayloadWritable && !isUnsetInit;
     if (payloadFlowDenied) {
@@ -1147,7 +1228,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       HasError = true;
     }
 
-    if (!isRebind && !lhsType->IsWritable && !isRefAssign) {
+    if (!isRebind && !lhsIsUnnarrowedBareNullableRaw && !lhsType->IsWritable &&
+        !isRefAssign) {
       error(Bin->LHS.get(), DiagID::ERR_IMMUTABLE_MOD, LHS);
     }
 
@@ -1534,7 +1616,8 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
       // targets Value, not Pointer Identity.
       bool isDerefAssign = false;
       if (auto *Un = dynamic_cast<UnaryExpr *>(Bin->LHS.get())) {
-        if (Un->Op == TokenType::Star)
+        if (Un->Op == TokenType::Star &&
+            !selectsHandleIdentity(Bin->LHS.get()) && !isRebind)
           isDerefAssign = true;
       }
 
@@ -1570,14 +1653,24 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
         };
 
         MorphKind sourceMorph = getSyntacticMorphology(Bin->RHS.get());
-        if (!isExempt(Bin->LHS.get()) && !isExempt(Bin->RHS.get())) {
+        if (!isExempt(Bin->LHS.get()) && lhsIsUnnarrowedBareNullableRaw &&
+            rhsType &&
+            (rhsType->isPointer() || rhsType->isSmartPointer() ||
+             rhsType->isReference() || rhsType->isNullType())) {
+          error(Bin, DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+        } else if (lhsType &&
+                   (lhsType->isPointer() || lhsType->isSmartPointer() ||
+                    lhsType->isReference()) &&
+                   isUnnarrowedBareNullableRawExpr(Bin->RHS.get())) {
+          error(Bin, DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+        } else if (!isExempt(Bin->LHS.get()) && !isExempt(Bin->RHS.get())) {
           checkStrictMorphology(Bin, targetMorph, sourceMorph, LHS);
         }
       }
     }
 
     bool diagnosedNullAssign = false;
-    if (!m_InUnsafeContext && lhsCompatType && lhsCompatType->isRawPointer() &&
+    if (lhsCompatType && lhsCompatType->isRawPointer() &&
         !lhsCompatType->IsNullable && rhsType && rhsType->isNullType()) {
       error(Bin, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
             lhsCompatType->toString());
@@ -1657,6 +1750,34 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     // rewrite.
     if (assignmentKind == AssignmentSemanticKind::Handle)
       updateHandleFlowCeiling();
+
+    // [v0.20 Raw Pointer Hat Unification] NonZeroFact invalidation (Classes 1 & 2)
+    {
+      std::string lhsPath = getPathString(Bin->LHS.get());
+      if (!lhsPath.empty() && !dynamic_cast<ArrayIndexExpr *>(Bin->LHS.get())) {
+        if (assignmentKind == AssignmentSemanticKind::Handle) {
+          invalidateNonZeroFactForPath(lhsPath, false);
+        } else {
+          invalidateNonZeroFactForPath(lhsPath, true);
+        }
+      }
+      bool isIndirectPayloadWrite = lhsIsOneLayerCollapsedMultiRaw;
+      if (!isIndirectPayloadWrite &&
+          assignmentKind == AssignmentSemanticKind::Payload && !lhsPath.empty()) {
+        std::string root = extractPathRoot(lhsPath);
+        SymbolInfo *rootInfo = nullptr;
+        std::string actualName = root;
+        if (CurrentScope->findVariableWithDeref(root, rootInfo, actualName) &&
+            rootInfo && rootInfo->TypeObj &&
+            (rootInfo->TypeObj->isPointer() ||
+             rootInfo->TypeObj->isSmartPointer() ||
+             rootInfo->TypeObj->isReference())) {
+          isIndirectPayloadWrite = true;
+        }
+      }
+      if (isIndirectPayloadWrite)
+        invalidateAliasedNonZeroFacts();
+    }
 
     // [Fix] Update InitMask logic for uninitialized variables
     Expr *LHSExpr = Bin->LHS.get();
@@ -1951,7 +2072,10 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
 
   // General Binary Ops
   if (Bin->Op == "&&" || Bin->Op == "||") {
-    if (!lhsType->isBoolean() || !rhsType->isBoolean()) {
+    if (isUnnarrowedBareNullableRawExpr(Bin->LHS.get()) ||
+        isUnnarrowedBareNullableRawExpr(Bin->RHS.get())) {
+      error(Bin, DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+    } else if (!lhsType->isBoolean() || !rhsType->isBoolean()) {
       error(Bin, DiagID::ERR_INVALID_OP, Bin->Op, lhsType->toString(),
             rhsType->toString());
     }
@@ -1962,6 +2086,9 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     if (!m_InUnsafeContext) {
       error(Bin,
             DiagID::ERR_UNSAFE_ALLOC_CTX); // Reuse for ptr arithmetic
+    }
+    if (isUnnarrowedBareNullableRawExpr(Bin->LHS.get())) {
+      error(Bin, DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
     }
     auto ptrType = std::dynamic_pointer_cast<toka::PointerType>(resolveType(lhsType, true));
     std::string elemType = "unknown";
@@ -1981,15 +2108,20 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
   if (Bin->Op == "==" || Bin->Op == "!=" || Bin->Op == "<" || Bin->Op == ">" ||
       Bin->Op == "<=" || Bin->Op == ">=") {
     bool diagnosedNullCmp = false;
+    if (isUnnarrowedBareNullableRawExpr(Bin->LHS.get()) ||
+        isUnnarrowedBareNullableRawExpr(Bin->RHS.get())) {
+      error(Bin, DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+      diagnosedNullCmp = true;
+    }
     if (lhsType && lhsType->isRawPointer() && rhsType && rhsType->isNullType()) {
-      if (!m_InUnsafeContext && !lhsType->IsNullable) {
+      if (!lhsType->IsNullable) {
         error(Bin, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
               lhsType->toString());
         diagnosedNullCmp = true;
       }
     }
     if (rhsType && rhsType->isRawPointer() && lhsType && lhsType->isNullType()) {
-      if (!m_InUnsafeContext && !rhsType->IsNullable) {
+      if (!rhsType->IsNullable) {
         error(Bin, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
               rhsType->toString());
         diagnosedNullCmp = true;
@@ -2103,6 +2235,13 @@ std::shared_ptr<toka::Type> Sema::checkBinaryExpr(BinaryExpr *Bin) {
     m_DisableSoulCollapse = true;
     auto lhsType = checkExpr(Bin->LHS.get());
     m_DisableSoulCollapse = oldDisable;
+
+    if (lhsType && lhsType->isRawPointer() && Bin->LHS &&
+        !Bin->LHS->IsMorphicExempt && !Bin->LHS->IsAbstractWholeValue &&
+        getSyntacticMorphology(Bin->LHS.get()) == MorphKind::None) {
+      error(Bin, DiagID::ERR_MORPHOLOGY_MISMATCH,
+            lhsType->IsNullable ? "?" : "*", "value");
+    }
 
     auto rhsType = checkExpr(Bin->RHS.get());
     // Basic validation for 'is' / 'is!'

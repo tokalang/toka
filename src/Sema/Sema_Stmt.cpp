@@ -1891,22 +1891,27 @@ void Sema::checkStmt(Stmt *S) {
         HasError = true;
       }
     } else if (!HasError && !isMissReturn) {
-
-      // A hit return into `T | miss` is checked against the payload's
-      // morphology, not the outcome wrapper (whose root has no hat).
-      MorphKind targetMorph = morphKindFromType(expectedReturnValueObj);
-      MorphKind sourceMorph = getSyntacticMorphology(Ret->ReturnValue.get());
-      
-      bool exempt = false;
-      Expr *e = Ret->ReturnValue.get();
-      while (e) {
-          if (e->IsMorphicExempt) { exempt = true; break; }
-          if (auto *un = dynamic_cast<UnaryExpr *>(e)) e = un->RHS.get();
-          else break;
-      }
-      
-      if (!exempt) {
-          checkStrictMorphology(Ret, targetMorph, sourceMorph, "return value");
+      if (isUnnarrowedBareNullableRawExpr(Ret->ReturnValue.get())) {
+        DiagnosticEngine::report(getLoc(Ret->ReturnValue.get()),
+                                 DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+        HasError = true;
+      } else {
+        // A hit return into `T | miss` is checked against the payload's
+        // morphology, not the outcome wrapper (whose root has no hat).
+        MorphKind targetMorph = morphKindFromType(expectedReturnValueObj);
+        MorphKind sourceMorph = getSyntacticMorphology(Ret->ReturnValue.get());
+        
+        bool exempt = false;
+        Expr *e = Ret->ReturnValue.get();
+        while (e) {
+            if (e->IsMorphicExempt) { exempt = true; break; }
+            if (auto *un = dynamic_cast<UnaryExpr *>(e)) e = un->RHS.get();
+            else break;
+        }
+        
+        if (!exempt) {
+            checkStrictMorphology(Ret, targetMorph, sourceMorph, "return value");
+        }
       }
     }
     auto hasNewReturnError = [&]() {
@@ -2114,7 +2119,10 @@ void Sema::checkStmt(Stmt *S) {
     const size_t releaseDiagnostics = DiagnosticEngine::records().size();
     Free->Expression = foldGenericConstant(std::move(Free->Expression));
     auto FreeTypeObj = checkExpr(Free->Expression.get());
-    if (!FreeTypeObj->isRawPointer()) {
+    if (isUnnarrowedBareNullableRawExpr(Free->Expression.get())) {
+      error(Free->Expression.get(), DiagID::ERR_MORPHOLOGY_MISMATCH, "?",
+            "value");
+    } else if (!FreeTypeObj->isRawPointer()) {
       std::string ExprType = FreeTypeObj->toString();
       if (FreeTypeObj->isSmartPointer()) {
         DiagnosticEngine::report(getLoc(Free), DiagID::ERR_FREE_SMART,
@@ -2262,8 +2270,12 @@ void Sema::checkStmt(Stmt *S) {
         Var->Permission.HandleLayers.size() == 2 && Var->ResolvedType->isReference() &&
         Var->ResolvedType->getPointeeType() &&
         (Var->ResolvedType->getPointeeType()->isUniquePtr() || Var->ResolvedType->getPointeeType()->isSharedPtr());
+    const bool inferredMultiLayerRaw =
+        Var->IsRawPointer && Var->ResolvedType &&
+        Var->Permission.HandleLayers.size() >= 2;
     if (!Var->DeclaredTypeSyntax && Var->ResolvedType &&
-        (inferredManagedReference || inferredManagedConstruction)) {
+        (inferredManagedReference || inferredManagedConstruction ||
+         inferredMultiLayerRaw)) {
       // Capture discovery has already elaborated this inferred two-layer
       // reference or explicit new binding. TypeName is a cached inner type,
       // not a new source annotation. Re-infer instead of wrapping twice or
@@ -2348,21 +2360,34 @@ void Sema::checkStmt(Stmt *S) {
         auto sourceType =
             queryExplicitCedeStage0NonCallType(Var->Init.get(), nullptr);
         if (sourceType && !sourceType->isUnknown()) {
-          std::string spelling;
-          if (Var->IsRawPointer)
-            spelling = "*";
-          else if (Var->IsUnique)
-            spelling = "^";
-          else if (Var->IsShared)
-            spelling = "~";
-          else
-            spelling = "&";
-          if (Var->IsRebindable)
-            spelling += "#";
-          spelling += Type::stripMorphology(sourceType->toString());
-          if (Var->IsValueMutable)
-            spelling += "#";
-          stage0DestinationType = Type::fromString(spelling);
+          if (Var->Permission.HandleLayers.size() >= 2) {
+            std::shared_ptr<Type> cur = sourceType;
+            for (size_t i = 0; i < Var->Permission.HandleLayers.size() && cur; ++i) {
+              if (cur->isPointer() || cur->isSmartPointer() || cur->isReference())
+                cur = cur->getPointeeType();
+            }
+            std::string soulSpelling =
+                cur ? Type::stripMorphology(cur->toString())
+                    : Type::stripMorphology(sourceType->getSoulName());
+            stage0DestinationType = resolveExplicitCedeStage0TypeReadOnly(
+                synthesizePhysicalTypeObject(Var->Permission, nullptr, soulSpelling));
+          } else {
+            std::string spelling;
+            if (Var->IsRawPointer)
+              spelling = Var->IsPointerNullable ? "?" : "*";
+            else if (Var->IsUnique)
+              spelling = "^";
+            else if (Var->IsShared)
+              spelling = "~";
+            else
+              spelling = "&";
+            if (Var->IsRebindable)
+              spelling += "#";
+            spelling += Type::stripMorphology(sourceType->toString());
+            if (Var->IsValueMutable)
+              spelling += "#";
+            stage0DestinationType = Type::fromString(spelling);
+          }
         }
       }
       if (bindingTransfer.enabled())
@@ -2512,7 +2537,8 @@ void Sema::checkStmt(Stmt *S) {
                 if (fieldIsPointer) {
                   bool hasPrefix = !memb->Member.empty() && 
                                    (memb->Member[0] == '&' || memb->Member[0] == '^' || 
-                                    memb->Member[0] == '~' || memb->Member[0] == '*');
+                                    memb->Member[0] == '~' || memb->Member[0] == '*' ||
+                                    memb->Member[0] == '?');
                   if (!hasPrefix) {
                     DiagnosticEngine::report(Var->Loc, DiagID::ERR_MORPHOLOGY_MISMATCH,
                                              "&", "value");
@@ -2595,48 +2621,105 @@ void Sema::checkStmt(Stmt *S) {
         // morphology from inferred soul
         if (Var->IsRawPointer || Var->IsUnique || Var->IsShared ||
             Var->IsReference) {
-          if (Var->IsRawPointer && !Var->IsPointerNullable && InitTypeObj &&
-              InitTypeObj->isRawPointer() && InitTypeObj->IsNullable) {
-            auto nonzeroType = InitTypeObj->withAttributes(
-                InitTypeObj->IsWritable, false, InitTypeObj->IsBlocked);
-            error(Var, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
-                  nonzeroType->toString());
-            Var->TypeName = "unknown";
-            return;
-          }
-          // Remove the raw may-zero wrapper before matching the binding's
-          // explicit `*` morphology.
-          if (Inferred.rfind("nul ", 0) == 0) {
-            Inferred = Inferred.substr(4);
-          } else if (Inferred.rfind("nul", 0) == 0 &&
-                     Inferred.size() > 3 && Inferred[3] == '*') {
-            Inferred = Inferred.substr(3);
-          }
-          if (!Inferred.empty() && (Inferred[0] == '*' || Inferred[0] == '^' ||
-                                    Inferred[0] == '~' || Inferred[0] == '&')) {
-            Inferred = Inferred.substr(1);
-            if (!Inferred.empty() && (Inferred[0] == '?' ||
-                                      Inferred[0] == '!' || Inferred[0] == '#'))
-              Inferred = Inferred.substr(1);
+          if (Var->IsRawPointer) {
+            auto curInit = InitTypeObj;
+            size_t rawHats = Var->Permission.HandleLayers.size();
+            if (rawHats == 0)
+              rawHats = 1;
+            for (size_t i = 0; i < rawHats; ++i) {
+              bool layerNull =
+                  i < Var->Permission.HandleLayers.size()
+                      ? Var->Permission.HandleLayers[i].Nullable
+                      : Var->IsPointerNullable;
+              bool layerRebind =
+                  i < Var->Permission.HandleLayers.size()
+                      ? Var->Permission.HandleLayers[i].Rebindable
+                      : Var->IsRebindable;
+              if (!curInit || !curInit->isRawPointer()) {
+                if (i == 0 && rawHats == 1 && curInit &&
+                    (curInit->isReference() || curInit->isSmartPointer())) {
+                  curInit = curInit->getPointeeType();
+                  break;
+                }
+                DiagnosticEngine::report(getLoc(Var),
+                                         DiagID::ERR_INIT_TYPE_MISMATCH,
+                                         "*(Raw Pointer)", Inferred);
+                HasError = true;
+                Var->TypeName = "unknown";
+                return;
+              }
+              if (i == 0 && !layerNull && curInit->IsNullable) {
+                auto nonzeroType = curInit->withAttributes(
+                    curInit->IsWritable, false, curInit->IsBlocked);
+                error(Var, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+                      nonzeroType->toString());
+                Var->TypeName = "unknown";
+                return;
+              }
+              if (i > 0 && (curInit->IsNullable != layerNull ||
+                            (layerRebind && !curInit->IsWritable))) {
+                std::string expectedChain;
+                for (const auto &l : Var->Permission.HandleLayers) {
+                  expectedChain += l.Nullable ? "?" : "*";
+                  if (l.Rebindable)
+                    expectedChain += "#";
+                }
+                expectedChain += curInit->getSoulName();
+                DiagnosticEngine::report(getLoc(Var),
+                                         DiagID::ERR_INIT_TYPE_MISMATCH,
+                                         expectedChain, InitType);
+                HasError = true;
+                Var->TypeName = "unknown";
+                return;
+              }
+              curInit = curInit->getPointeeType();
+            }
+            if (!Var->IsMorphicExempt && curInit && curInit->isRawPointer()) {
+              std::string sigilStr = curInit->IsNullable ? "?" : "*";
+              DiagnosticEngine::report(getLoc(Var), (int)Var->Name.length(),
+                                       DiagID::ERR_POINTER_SIGIL_MISSING,
+                                       Var->Name, InitType, sigilStr,
+                                       Var->Name);
+              HasError = true;
+              Var->TypeName = "unknown";
+              return;
+            }
+            Inferred = curInit ? curInit->toString() : "void";
           } else {
-            // [NEW] Strict Explicit Memory Allocation. 
-            // Implicit boxing like `auto ^p = shape` is structurally prohibited.
-            if (Var->IsShared || Var->IsUnique) {
-               DiagnosticEngine::report(getLoc(Var), DiagID::ERR_IMPLICIT_BOX_PROHIBITED, Inferred);
-               HasError = true;
-               Var->TypeName = "unknown";
-               return;
-            } else if (Var->IsRawPointer) {
-               DiagnosticEngine::report(getLoc(Var), DiagID::ERR_INIT_TYPE_MISMATCH, "*(Raw Pointer)", Inferred);
-               HasError = true;
-               Var->TypeName = "unknown";
-               return;
+            // Remove the raw may-zero wrapper before matching the binding's
+            // explicit `*` morphology.
+            if (Inferred.rfind("nul ", 0) == 0) {
+              Inferred = Inferred.substr(4);
+            } else if (Inferred.rfind("nul", 0) == 0 &&
+                       Inferred.size() > 3 && Inferred[3] == '*') {
+              Inferred = Inferred.substr(3);
+            }
+            if (!Inferred.empty() &&
+                (Inferred[0] == '*' || Inferred[0] == '?' ||
+                 Inferred[0] == '^' || Inferred[0] == '~' ||
+                 Inferred[0] == '&')) {
+              Inferred = Inferred.substr(1);
+              if (!Inferred.empty() &&
+                  (Inferred[0] == '?' || Inferred[0] == '!' ||
+                   Inferred[0] == '#'))
+                Inferred = Inferred.substr(1);
+            } else {
+              // [NEW] Strict Explicit Memory Allocation.
+              // Implicit boxing like `auto ^p = shape` is structurally
+              // prohibited.
+              if (Var->IsShared || Var->IsUnique) {
+                DiagnosticEngine::report(
+                    getLoc(Var), DiagID::ERR_IMPLICIT_BOX_PROHIBITED, Inferred);
+                HasError = true;
+                Var->TypeName = "unknown";
+                return;
+              }
             }
           }
         } else {
           if (!Var->IsMorphicExempt && !Inferred.empty() &&
-              (Inferred[0] == '*' || Inferred[0] == '^' || Inferred[0] == '~' ||
-               Inferred[0] == '&')) {
+              (Inferred[0] == '*' || Inferred[0] == '?' || Inferred[0] == '^' ||
+               Inferred[0] == '~' || Inferred[0] == '&')) {
             std::string sigilStr = std::string(1, Inferred[0]);
             DiagnosticEngine::report(getLoc(Var), (int)Var->Name.length(),
                                      DiagID::ERR_POINTER_SIGIL_MISSING,
@@ -2658,28 +2741,30 @@ void Sema::checkStmt(Stmt *S) {
       }
     } else {
       // Compatibility Check
-      std::string DeclFullTy = Var->TypeName;
-      std::string Morph = "";
-      if (Var->IsRawPointer)
-        Morph = "*";
-      else if (Var->IsUnique)
-        Morph = "^";
-      else if (Var->IsShared)
-        Morph = "~";
-      else if (Var->IsReference)
-        Morph = "&";
-      if (!Morph.empty()) {
-        if (Var->IsRebindable)
-          Morph += "#";
-        if (Var->IsPointerNullable)
-          Morph = "nul " + Morph;
-        DeclFullTy = Morph + DeclFullTy;
+      BindingPermission ExplicitPerm = Var->Permission;
+      ExplicitPerm.SoulWritable =
+          Var->IsValueMutable ||
+          (!Var->IsRawPointer && !Var->IsUnique && !Var->IsShared &&
+           !Var->IsReference && Var->IsRebindable);
+      auto declTargetTy = resolveType(
+          Sema::synthesizePhysicalTypeObject(
+              ExplicitPerm, Var->DeclaredTypeSyntax, Var->TypeName, false),
+          false);
+      if (!declTargetTy) {
+        declTargetTy = toka::Type::fromString(resolveType(Var->TypeName));
       }
-      if (Var->IsValueMutable) {
-        DeclFullTy += "#";
-      }
+      std::string DeclFullTy =
+          declTargetTy ? declTargetTy->toString() : Var->TypeName;
 
-      if (!InitType.empty() && !isTypeCompatible(toka::Type::fromString(resolveType(DeclFullTy)), InitTypeObj)) {
+      if (!InitType.empty() && declTargetTy && declTargetTy->isRawPointer() &&
+          !declTargetTy->IsNullable && InitTypeObj &&
+          (InitTypeObj->isNullType() ||
+           (InitTypeObj->isRawPointer() && InitTypeObj->IsNullable))) {
+        auto nonzeroType = declTargetTy->withAttributes(
+            declTargetTy->IsWritable, false, declTargetTy->IsBlocked);
+        error(Var, DiagID::ERR_NONZERO_RAW_NULL_FLOW, nonzeroType->toString());
+      } else if (!InitType.empty() &&
+                 !isTypeCompatible(declTargetTy, InitTypeObj)) {
         std::string boxedType = (Var->IsShared ? "~" : (Var->IsUnique ? "^" : ""));
         if (!boxedType.empty()) {
            DiagnosticEngine::report(getLoc(Var), DiagID::ERR_IMPLICIT_BOX_PROHIBITED, InitType);
@@ -2690,8 +2775,7 @@ void Sema::checkStmt(Stmt *S) {
            DiagnosticEngine::report(getLoc(Var), DiagID::ERR_INIT_TYPE_MISMATCH, DeclFullTy, InitType);
            HasError = true;
         }
-      } else if (!InitType.empty() && InitTypeObj) {
-         auto declTargetTy = toka::Type::fromString(resolveType(DeclFullTy));
+      } else if (!InitType.empty() && InitTypeObj && declTargetTy) {
          bool isPrimitiveWidening = declTargetTy->typeKind == toka::Type::Primitive && InitTypeObj->typeKind == toka::Type::Primitive;
          if (!declTargetTy->equals(*InitTypeObj) && isPrimitiveWidening && !Var->IsShared && !Var->IsUnique) {
              auto origLoc = Var->Init->Loc;
@@ -2709,8 +2793,15 @@ void Sema::checkStmt(Stmt *S) {
         Var->Permission.Morphology != BindingMorphology::Reference) {
       MorphKind lhsMorph = morphKindFromPermission(Var->Permission);
       MorphKind rhsMorph = getSyntacticMorphology(Var->Init.get());
-
-      checkStrictMorphology(Var, lhsMorph, rhsMorph, Var->Name);
+      if (lhsMorph == MorphKind::None &&
+          (Var->IsMorphicExempt ||
+           (InitTypeObj && InitTypeObj->isRawPointer() && !inferredType &&
+            !HasError)) &&
+          isUnnarrowedBareNullableRawExpr(Var->Init.get())) {
+        error(Var, DiagID::ERR_MORPHOLOGY_MISMATCH, "?", "value");
+      } else {
+        checkStrictMorphology(Var, lhsMorph, rhsMorph, Var->Name);
+      }
     }
 
     SymbolInfo Info;
@@ -2736,14 +2827,22 @@ void Sema::checkStmt(Stmt *S) {
     // concatenating textual prefixes: `auto &x = &u` remains `&T`, while
     // `auto &^h = &^u` becomes `&^T` exactly once.
     if (inferredType && !Var->Permission.HandleLayers.empty() && InitTypeObj) {
-      baseType = InitTypeObj->getSoulName();
+      if (Var->IsRawPointer) {
+        baseType = Var->TypeName;
+      } else {
+        baseType = InitTypeObj->getSoulName();
+      }
     } else if (baseType.size() > 1 &&
                (baseType[0] == '^' || baseType[0] == '~' ||
-                baseType[0] == '*' || baseType[0] == '&')) {
+                baseType[0] == '*' || baseType[0] == '?' ||
+                baseType[0] == '&')) {
       if (morph.empty()) {
-        morph = std::string(1, baseType[0]);
+        morph = (baseType[0] == '?') ? "*" : std::string(1, baseType[0]);
+        if (baseType[0] == '?')
+          hadNul = true;
         baseType = baseType.substr(1);
-      } else if (morph[0] == baseType[0]) {
+      } else if (morph[0] == baseType[0] ||
+                 (morph[0] == '*' && baseType[0] == '?')) {
         baseType = baseType.substr(1);
       }
     }
@@ -3487,6 +3586,10 @@ void Sema::checkStmt(Stmt *S) {
     Info.IsDeclaredVariable = true;
     if (bindingTransfer.enabled() &&
         !bindingTransfer.prepare(Var->Init.get(), Var->ResolvedType, nullptr, true, InitTypeObj)) {
+      if (Var->IsRawPointer) {
+        Info.ASTPtr = Var;
+        CurrentScope->define(Var->Name, Info);
+      }
       m_ControlFlowStack.pop_back();
       return;
     }
@@ -3687,7 +3790,9 @@ void Sema::checkStmt(Stmt *S) {
           if (str.find('^') != std::string::npos) return MorphKind::Unique;
           if (str.find('~') != std::string::npos) return MorphKind::Shared;
           if (str.find('&') != std::string::npos) return MorphKind::Ref;
-          if (str.find('*') != std::string::npos) return MorphKind::Raw;
+          if (str.find('*') != std::string::npos ||
+              str.find('?') != std::string::npos)
+            return MorphKind::Raw;
           return MorphKind::None;
         };
 
@@ -3853,6 +3958,142 @@ void Sema::checkStmt(Stmt *S) {
               Destruct->Variables[i].IsValueMutable,
               Destruct->Variables[i].IsValueNullable,
               Destruct->Variables[i].IsValueBlocked);
+          bool isMorphicExempt =
+              (!Destruct->Variables[i].Name.empty() &&
+               Destruct->Variables[i].Name[0] == '\'');
+          if (!Destruct->Variables[i].IsReference && baseTypeObj &&
+              baseTypeObj->isRawPointer() && isMorphicExempt) {
+            std::vector<std::shared_ptr<toka::RawPointerType>> targetRawLayers;
+            std::shared_ptr<toka::Type> rawSoul = baseTypeObj;
+            while (rawSoul && rawSoul->isRawPointer()) {
+              targetRawLayers.push_back(
+                  std::static_pointer_cast<toka::RawPointerType>(rawSoul));
+              rawSoul = rawSoul->getPointeeType();
+            }
+            if (rawSoul) {
+              std::shared_ptr<toka::Type> rebuilt = rawSoul->withAttributes(
+                  Destruct->Variables[i].IsValueMutable || rawSoul->IsWritable,
+                  rawSoul->IsNullable,
+                  Destruct->Variables[i].IsValueBlocked || rawSoul->IsBlocked);
+              for (size_t idx = targetRawLayers.size(); idx > 0; --idx) {
+                size_t li = idx - 1;
+                auto layer = std::make_shared<toka::RawPointerType>(rebuilt);
+                layer->IsNullable = targetRawLayers[li]->IsNullable;
+                layer->IsWritable = targetRawLayers[li]->IsWritable;
+                layer->IsBlocked = targetRawLayers[li]->IsBlocked;
+                rebuilt = layer;
+              }
+              soulType = rebuilt;
+            }
+          } else if (!Destruct->Variables[i].IsWildcard && !isMorphicExempt &&
+                     !Destruct->Variables[i].IsReference &&
+                     ((baseTypeObj && baseTypeObj->isRawPointer()) ||
+                      Destruct->Variables[i].Permission.Morphology ==
+                          BindingMorphology::Raw)) {
+            std::vector<std::shared_ptr<toka::RawPointerType>> targetRawLayers;
+            std::shared_ptr<toka::Type> rawSoul = baseTypeObj;
+            while (rawSoul && rawSoul->isRawPointer()) {
+              targetRawLayers.push_back(
+                  std::static_pointer_cast<toka::RawPointerType>(rawSoul));
+              rawSoul = rawSoul->getPointeeType();
+            }
+            const auto &varLayers =
+                Destruct->Variables[i].Permission.HandleLayers;
+            bool reportedNullFlow = false;
+            size_t commonDepth =
+                std::min(varLayers.size(), targetRawLayers.size());
+            for (size_t li = 0; li < commonDepth; ++li) {
+              if (varLayers[li].Morphology == BindingMorphology::Raw &&
+                  !varLayers[li].Nullable && targetRawLayers[li]->IsNullable) {
+                auto nonzeroType = targetRawLayers[li]->withAttributes(
+                    targetRawLayers[li]->IsWritable, false,
+                    targetRawLayers[li]->IsBlocked);
+                error(Destruct, DiagID::ERR_NONZERO_RAW_NULL_FLOW,
+                      nonzeroType->toString());
+                reportedNullFlow = true;
+                break;
+              }
+            }
+            if (!reportedNullFlow) {
+              bool mismatch = (varLayers.size() != targetRawLayers.size());
+              for (size_t li = 0; li < varLayers.size() && !mismatch; ++li) {
+                if (varLayers[li].Morphology != BindingMorphology::Raw ||
+                    varLayers[li].Nullable != targetRawLayers[li]->IsNullable) {
+                  mismatch = true;
+                }
+              }
+              if (mismatch) {
+                std::string expectedSigils;
+                for (const auto &l : targetRawLayers)
+                  expectedSigils += l->IsNullable ? "?" : "*";
+                if (expectedSigils.empty())
+                  expectedSigils = "*";
+                std::string cleanVarName =
+                    toka::Type::stripMorphology(Destruct->Variables[i].Name);
+                DiagnosticEngine::report(
+                    getLoc(Destruct), DiagID::ERR_POINTER_SIGIL_MISSING,
+                    cleanVarName,
+                    baseTypeObj ? baseTypeObj->toString() : "unknown",
+                    expectedSigils, cleanVarName);
+                HasError = true;
+              } else {
+                bool innerWriteElevation = false;
+                for (size_t li = 1; li < varLayers.size(); ++li) {
+                  if (varLayers[li].Rebindable &&
+                      !targetRawLayers[li]->IsWritable) {
+                    innerWriteElevation = true;
+                    break;
+                  }
+                }
+                if (innerWriteElevation) {
+                  std::string expectedChain;
+                  for (const auto &l : varLayers) {
+                    expectedChain += l.Nullable ? "?" : "*";
+                    if (l.Rebindable)
+                      expectedChain += "#";
+                    else if (l.Blocked)
+                      expectedChain += "$";
+                  }
+                  if (rawSoul) {
+                    std::shared_ptr<toka::Type> soulWithAttr =
+                        rawSoul->withAttributes(
+                            Destruct->Variables[i].IsValueMutable,
+                            rawSoul->IsNullable,
+                            Destruct->Variables[i].IsValueBlocked ||
+                                rawSoul->IsBlocked);
+                    expectedChain += soulWithAttr->toString();
+                  }
+                  DiagnosticEngine::report(
+                      getLoc(Destruct), DiagID::ERR_INIT_TYPE_MISMATCH,
+                      expectedChain,
+                      baseTypeObj ? baseTypeObj->toString() : "unknown");
+                  HasError = true;
+                }
+              }
+            }
+            if (rawSoul) {
+              std::shared_ptr<toka::Type> rebuilt = rawSoul->withAttributes(
+                  Destruct->Variables[i].IsValueMutable, rawSoul->IsNullable,
+                  Destruct->Variables[i].IsValueBlocked || rawSoul->IsBlocked);
+              for (size_t idx = targetRawLayers.size(); idx > 0; --idx) {
+                size_t li = idx - 1;
+                auto layer = std::make_shared<toka::RawPointerType>(rebuilt);
+                layer->IsNullable = targetRawLayers[li]->IsNullable;
+                bool reqRebind =
+                    (li < varLayers.size()) ? varLayers[li].Rebindable : false;
+                bool reqBlocked =
+                    (li < varLayers.size()) ? varLayers[li].Blocked : false;
+                layer->IsWritable =
+                    (li == 0)
+                        ? reqRebind
+                        : (reqRebind && targetRawLayers[li]->IsWritable);
+                layer->IsBlocked =
+                    reqBlocked || targetRawLayers[li]->IsBlocked;
+                rebuilt = layer;
+              }
+              soulType = rebuilt;
+            }
+          }
 
           if (Destruct->Variables[i].IsReference) {
             Info.TypeObj = std::make_shared<toka::ReferenceType>(soulType);
@@ -3890,6 +4131,21 @@ void Sema::checkStmt(Stmt *S) {
           // ceiling below; leaving Permission at its default would silently
           // erase an explicit binding such as `&view#`.
           Info.Permission = Destruct->Variables[i].Permission;
+          if (!Destruct->Variables[i].IsReference && Info.TypeObj &&
+              Info.TypeObj->isRawPointer()) {
+            std::shared_ptr<toka::Type> cur = Info.TypeObj;
+            for (size_t li = 0;
+                 li < Info.Permission.HandleLayers.size() && cur &&
+                 cur->isRawPointer();
+                 ++li) {
+              Info.Permission.HandleLayers[li].Nullable = cur->IsNullable;
+              Info.Permission.HandleLayers[li].Rebindable = cur->IsWritable;
+              Info.Permission.HandleLayers[li].Blocked = cur->IsBlocked;
+              cur = cur->getPointeeType();
+            }
+            Info.Permission.syncProjections();
+          }
+          Info.IsRebindable = Info.Permission.IdentityRebindable;
           Info.IsDeclaredMutable = Destruct->Variables[i].IsValueMutable;
           if (fieldCapability.PayloadFlowRestricted) {
             Info.PayloadFlowWritable = fieldCapability.PayloadWritable;

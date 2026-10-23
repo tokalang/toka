@@ -2,15 +2,15 @@ import std/arena::{Arena, alloc_type}
 
 shape Point(x: i32, y: i32)
 
-fn forwarded(arena#: Arena) -> nul *Point# <- arena {
-    auto nul *result# = alloc_type<Point>(arena#)
-    return *result
+fn forwarded(arena#: Arena) -> ?Point# <- arena {
+    auto ?result# = alloc_type<Point>(arena#)
+    return ?result
 }
 
 fn main() -> i32 {
     auto arena# = Arena::new_with_capacity(64:usize)
-    auto nul *pending# = alloc_type<Point>(arena#)
-    if *pending is null { return 1 }
+    auto ?pending# = alloc_type<Point>(arena#)
+    if ?pending is null { return 1 }
     auto *point# = pending.unwrap()
     // Allocation supplies storage only: initialize both fields before reading.
     point.x = 11

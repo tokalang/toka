@@ -66,12 +66,14 @@ SHA = re.compile(r'[0-9a-f]{40}\Z')
 
 
 def modern(label):
-    if label.startswith(('v0.12.', 'v0.13.', 'v0.14.', 'v0.15.', 'v0.16.', 'v0.17.', 'v0.18.', 'v0.19.')) and not re.fullmatch(r'v0\.(?:12|13|14|15|16|17|18|19)\.(0|[1-9][0-9]*)', label):
+    if label.startswith(('v0.12.', 'v0.13.', 'v0.14.', 'v0.15.', 'v0.16.', 'v0.17.', 'v0.18.', 'v0.19.', 'v0.20.')) and not re.fullmatch(r'v0\.(?:12|13|14|15|16|17|18|19|20)\.(0|[1-9][0-9]*)', label):
         raise ValueError('noncanonical three-core release label')
-    return bool(re.fullmatch(r'v0\.(?:12|13|14|15|16|17|18|19)\.(0|[1-9][0-9]*)',label))
+    return bool(re.fullmatch(r'v0\.(?:12|13|14|15|16|17|18|19|20)\.(0|[1-9][0-9]*)',label))
 
 
 def policy_id(label):
+    if label.startswith('v0.20.'):
+        return 'toka.release-platforms.0.20.v1'
     if label.startswith('v0.19.'):
         return 'toka.release-platforms.0.19.v1'
     if label.startswith('v0.18.'):
@@ -88,7 +90,7 @@ def policy_id(label):
 
 
 def core_targets(label):
-    if not re.fullmatch(r'v0\.(?:11|12|13|14|15|16|17|18|19)\.(0|[1-9][0-9]*)',label):
+    if not re.fullmatch(r'v0\.(?:11|12|13|14|15|16|17|18|19|20)\.(0|[1-9][0-9]*)',label):
         raise ValueError('unsupported or noncanonical release label')
     return CORE if modern(label) else LEGACY
 
@@ -2087,6 +2089,16 @@ def expected_019_script_sha256():
     return None
 
 
+EXPECTED_020_FIXTURES_DIGEST = '13e6752675845a1d9a4deec6b01e1fd33152010c4a5755694634fe85dd2912dc'
+
+
+def expected_020_script_sha256():
+    m = get_bundle_manifest()
+    if m and isinstance(m.get('modules'), dict):
+        return m['modules'].get('test_0_20_candidate.py')
+    return None
+
+
 EXPECTED_017_VERSION_RECEIPTS = {
     'version-tokac',
     'version-toka',
@@ -3559,6 +3571,484 @@ def candidate_019_receipt_errors(receipt, revision, label, target=None):
     return errors
 
 
+NEG_020_CASES = [
+    ('neg01_legacy_nul_star_removed', 'E0488'),
+    ('neg02_postfix_nullable_assertion_removed', 'E0487'),
+    ('neg03_safe_nullable_type_suffix_removed', 'E0484'),
+    ('neg04_nonzero_raw_null_in_unsafe', 'E0483'),
+    ('neg05_inner_pointee_nullability_invariance', 'E04606'),
+    ('neg06_outer_nullable_inner_invariance', 'E04606'),
+    ('neg07_rebindable_param_nullability_invariance', 'E04571'),
+    ('neg08_unnarrowed_nullable_member_access', 'E0447'),
+    ('neg09_nonzero_fact_invalidated_by_rebind', 'E04606'),
+    ('neg10_unwrap_does_not_narrow_source_var', 'E04606'),
+    ('neg11_mixed_raw_managed_multilayer_rejected', 'E0495'),
+    ('neg12_cross_module_private_field_via_tki020', 'E0418'),
+]
+
+POS_020_CASES = [
+    'pos1_raw_hats_2layer_and_3layer_matrix',
+    'pos2_nonzero_fact_narrowing_and_rebind',
+    'pos3_cross_module_sourceless_tki_020_consumer',
+]
+
+EXPECTED_020_RECEIPT_NAMES = {
+    'version-tokac',
+    'version-toka',
+    'version-tokafmt',
+    'version-tokalsp',
+    'pos-tki-provider-compile',
+    'neg-tki-missing-iface',
+    'neg-tki-corrupt-iface',
+    'neg-tki-format6-iface',
+    'neg-tki-lang019-iface',
+    'neg-tki-epoch018-iface',
+    'pos-tokafmt-pass1',
+    'pos-tokafmt-pass2',
+    'pos-019-visibility-matrix',
+    'pos-compositional-convergence',
+}
+for _cid, _ in NEG_020_CASES:
+    for _mode in ('check-only', 'compile-obj', 'emit-llvm'):
+        EXPECTED_020_RECEIPT_NAMES.add(f'neg-{_cid}-{_mode}')
+for _cid in POS_020_CASES:
+    for _step in ('check-only', 'emit-llvm', 'compile-obj', 'binary-build', 'native-execution'):
+        EXPECTED_020_RECEIPT_NAMES.add(f'pos-{_cid}-{_step}')
+
+AUTH_NEG_020_DIAGNOSTICS = dict(NEG_020_CASES)
+POS_020_SET = set(POS_020_CASES)
+
+
+def candidate_020_receipt_errors(receipt, revision, label, target=None):
+    if not isinstance(receipt, dict):
+        return ['0.20 candidate receipt is missing or not a dict']
+    errors = []
+    if receipt.get('schema') != 'toka.0.20-candidate-controls':
+        errors.append('0.20 receipt schema mismatch')
+    version = receipt.get('version')
+    if type(version) is not int or isinstance(version, bool) or version != 1:
+        errors.append('0.20 receipt version must be int 1')
+    if receipt.get('result') != 'pass':
+        errors.append('0.20 receipt result is not pass')
+    if receipt.get('candidate_revision') != revision:
+        errors.append('0.20 candidate revision mismatch')
+    if receipt.get('version_label') != label:
+        errors.append('0.20 version label mismatch')
+    target_val = receipt.get('target')
+    if not isinstance(target_val, str) or not target_val:
+        errors.append('0.20 target missing or invalid')
+    elif target is not None and target_val != target:
+        errors.append('0.20 target mismatch: expected %s, got %s' % (target, target_val))
+    if receipt.get('build_testing') is not False or type(receipt.get('build_testing')) is not bool:
+        errors.append('0.20 receipt build_testing must be False')
+    if receipt.get('default_language_epoch') != '0.20':
+        errors.append('0.20 receipt default_language_epoch must be 0.20')
+    if receipt.get('default_encap_epoch') != '0.19':
+        errors.append('0.20 receipt default_encap_epoch must be 0.19')
+    ifv = receipt.get('interface_format_version')
+    if type(ifv) is not int or isinstance(ifv, bool) or ifv != 7:
+        errors.append('0.20 receipt interface_format_version must be int 7')
+    if receipt.get('groups') != ['G-020-raw-pointer-hats']:
+        errors.append('0.20 receipt groups mismatch')
+    if receipt.get('fixtures_digest') != EXPECTED_020_FIXTURES_DIGEST:
+        errors.append('0.20 fixtures digest mismatch')
+
+    if receipt.get('control_script_name') != 'test_0_20_candidate.py':
+        errors.append('0.20 control script name mismatch')
+    control_sha = receipt.get('control_script_sha256')
+    expected_control_sha = expected_020_script_sha256()
+    if not isinstance(control_sha, str) or not re.fullmatch(r'[0-9a-f]{64}', control_sha):
+        errors.append('0.20 control script sha256 missing or invalid')
+    elif expected_control_sha and control_sha != expected_control_sha:
+        errors.append('0.20 control script digest mismatch')
+
+    sdk_root = receipt.get('SDK_root')
+    if not isinstance(sdk_root, str) or not sdk_root:
+        errors.append('0.20 SDK_root missing or invalid')
+        sdk_root = ''
+
+    expected_tools = {}
+    if sdk_root:
+        for tool in ('tokac', 'toka', 'tokafmt', 'tokalsp'):
+            expected_tools[tool] = (
+                os.path.normpath(os.path.join(sdk_root, 'bin', tool)),
+                os.path.normpath(os.path.join(sdk_root, 'bin', f'{tool}.exe')),
+            )
+
+    recs = receipt.get('receipts')
+    if not isinstance(recs, list) or len(recs) != len(EXPECTED_020_RECEIPT_NAMES):
+        errors.append(f'0.20 receipts must be a list of exactly {len(EXPECTED_020_RECEIPT_NAMES)} command receipts (got {len(recs) if isinstance(recs, list) else type(recs)})')
+        return errors
+
+    tki_facts = receipt.get('source_hidden_tki')
+    if not isinstance(tki_facts, dict):
+        errors.append('0.20 receipt missing source_hidden_tki dictionary')
+    else:
+        pfv = tki_facts.get('provider_format_version')
+        if type(pfv) is not int or isinstance(pfv, bool) or pfv != 7:
+            errors.append('0.20 source_hidden_tki provider_format_version must be int 7')
+        if tki_facts.get('provider_language_epoch') != '0.20':
+            errors.append('0.20 source_hidden_tki provider_language_epoch must be 0.20')
+        if tki_facts.get('provider_encap_epoch') != '0.19':
+            errors.append('0.20 source_hidden_tki provider_encap_epoch must be 0.19')
+        for r_flag in (
+            'missing_interface_rejected',
+            'corrupt_interface_rejected',
+            'format6_interface_rejected',
+            'lang019_interface_rejected',
+            'epoch018_interface_rejected',
+        ):
+            if tki_facts.get(r_flag) is not True or type(tki_facts.get(r_flag)) is not bool:
+                errors.append(f'0.20 source_hidden_tki {r_flag} must be boolean True')
+        if tki_facts.get('consumer_result') != 'pass':
+            errors.append('0.20 source_hidden_tki consumer_result must be pass')
+        psp = tki_facts.get('provider_source_present')
+        if psp is not False or type(psp) is not bool:
+            errors.append('0.20 source_hidden_tki provider_source_present must exist and be exactly boolean False')
+        p_tki = tki_facts.get('provider_tki_sha256')
+        if not isinstance(p_tki, str) or not re.fullmatch(r'[0-9a-f]{64}', p_tki) or len(set(p_tki)) <= 4:
+            errors.append('0.20 source_hidden_tki provider_tki_sha256 missing, invalid or unbound dummy hash')
+        p_obj = tki_facts.get('provider_object_sha256')
+        if not isinstance(p_obj, str) or not re.fullmatch(r'[0-9a-f]{64}', p_obj) or len(set(p_obj)) <= 4:
+            errors.append('0.20 source_hidden_tki provider_object_sha256 missing, invalid or unbound dummy hash')
+
+        c_tki = tki_facts.get('consumed_tki_sha256')
+        if not isinstance(c_tki, str) or not re.fullmatch(r'[0-9a-f]{64}', c_tki):
+            errors.append('0.20 source_hidden_tki consumed_tki_sha256 is mandatory and must be a 64-hex SHA-256')
+        elif c_tki != p_tki:
+            errors.append('0.20 source_hidden_tki consumed_tki_sha256 mismatch with provider_tki_sha256')
+
+        c_obj = tki_facts.get('consumed_object_sha256')
+        if not isinstance(c_obj, str) or not re.fullmatch(r'[0-9a-f]{64}', c_obj):
+            errors.append('0.20 source_hidden_tki consumed_object_sha256 is mandatory and must be a 64-hex SHA-256')
+        elif c_obj != p_obj:
+            errors.append('0.20 source_hidden_tki consumed_object_sha256 mismatch with provider_object_sha256')
+
+        tki_cmd_map = {
+            'missing_interface_command': ('neg-tki-missing-iface', ('E0901',), None),
+            'corrupt_interface_command': ('neg-tki-corrupt-iface', ('E0901',), None),
+            'format6_interface_command': ('neg-tki-format6-iface', ('E0901',), 'Interface format version mismatch (expected 7, got 6)'),
+            'lang019_interface_command': ('neg-tki-lang019-iface', ('E0901',), 'Interface language_epoch mismatch (expected 0.20, got 0.19)'),
+            'epoch018_interface_command': ('neg-tki-epoch018-iface', ('E0901',), 'Interface encap_epoch mismatch (expected 0.19, got 0.18)'),
+        }
+        for cmd_key, (exp_rname, exp_diags, exp_sub) in tki_cmd_map.items():
+            cmd_rec = tki_facts.get(cmd_key)
+            if not isinstance(cmd_rec, dict):
+                errors.append(f'0.20 source_hidden_tki {cmd_key} is mandatory and must be a dict')
+                continue
+            ec = cmd_rec.get('exit_code')
+            if type(ec) is not int or isinstance(ec, bool) or ec != 1:
+                errors.append(f'0.20 source_hidden_tki {cmd_key} exit_code must be int 1 (got {type(ec).__name__}: {ec})')
+            if cmd_rec.get('ok') is not True:
+                errors.append(f'0.20 source_hidden_tki {cmd_key} ok must be True')
+            if cmd_rec.get('result') != 'pass':
+                errors.append(f'0.20 source_hidden_tki {cmd_key} result must be pass')
+            if cmd_rec.get('artifact_absent') is not True:
+                errors.append(f'0.20 source_hidden_tki {cmd_key} artifact_absent must be True')
+            if cmd_rec.get('signal') is not None or cmd_rec.get('termination') is not None or cmd_rec.get('error') is not None:
+                errors.append(f'0.20 source_hidden_tki {cmd_key} indicates abnormal termination')
+
+            c_argv = cmd_rec.get('argv') or cmd_rec.get('cmd')
+            if not isinstance(c_argv, list) or not c_argv or not all(isinstance(a, str) and a for a in c_argv):
+                errors.append(f'0.20 source_hidden_tki {cmd_key} argv invalid')
+            else:
+                c_cwd = cmd_rec.get('cwd') or ''
+                c_prog_raw = c_argv[0].replace('\\', '/')
+                c_prog = os.path.normpath(c_prog_raw if os.path.isabs(c_prog_raw) else os.path.join(c_cwd, c_prog_raw))
+                if not expected_tools or c_prog not in expected_tools.get('tokac', ()):
+                    errors.append(f'0.20 source_hidden_tki {cmd_key} program {c_prog} does not match expected_tokac')
+                if '--check-only' not in c_argv:
+                    errors.append(f'0.20 source_hidden_tki {cmd_key} argv missing --check-only')
+                if not any('consumer.tk' in a.replace('\\', '/') for a in c_argv):
+                    errors.append(f'0.20 source_hidden_tki {cmd_key} argv missing consumer.tk fixture')
+
+            ms = cmd_rec.get('execution_ms')
+            if type(ms) not in (int, float) or isinstance(ms, bool) or not math.isfinite(ms) or ms <= 0:
+                errors.append(f'0.20 source_hidden_tki {cmd_key} execution_ms invalid')
+
+            c_out = cmd_rec.get('stdout')
+            c_err = cmd_rec.get('stderr')
+            if not isinstance(c_out, str) or not isinstance(c_err, str):
+                errors.append(f'0.20 source_hidden_tki {cmd_key} stdout/stderr missing or not string')
+            else:
+                if hashlib.sha256(c_out.encode('utf-8')).hexdigest() != cmd_rec.get('stdout_sha256'):
+                    errors.append(f'0.20 source_hidden_tki {cmd_key} stdout_sha256 mismatch')
+                if hashlib.sha256(c_err.encode('utf-8')).hexdigest() != cmd_rec.get('stderr_sha256'):
+                    errors.append(f'0.20 source_hidden_tki {cmd_key} stderr_sha256 mismatch')
+                combined_io = c_out + '\n' + c_err
+                if not any(d in combined_io for d in exp_diags):
+                    errors.append(f'0.20 source_hidden_tki {cmd_key} stderr missing expected diagnostic {exp_diags}')
+                if exp_sub and exp_sub not in combined_io:
+                    errors.append(f'0.20 source_hidden_tki {cmd_key} stderr missing expected substring {exp_sub!r}')
+
+            matching_r = next((r for r in recs if isinstance(r, dict) and r.get('name') == exp_rname), None)
+            if not matching_r:
+                errors.append(f'0.20 source_hidden_tki {cmd_key} has no corresponding receipt {exp_rname}')
+            else:
+                for fld in ('exit_code', 'stdout_sha256', 'stderr_sha256', 'ok', 'result', 'artifact_absent'):
+                    if cmd_rec.get(fld) != matching_r.get(fld):
+                        errors.append(f'0.20 source_hidden_tki {cmd_key} field {fld} mismatch with receipt {exp_rname}')
+                if (cmd_rec.get('argv') or cmd_rec.get('cmd')) != (matching_r.get('argv') or matching_r.get('cmd')):
+                    errors.append(f'0.20 source_hidden_tki {cmd_key} argv mismatch with receipt {exp_rname}')
+
+    tools_dict = receipt.get('four_tool_versions')
+    if not isinstance(tools_dict, dict) or set(tools_dict.keys()) != {'tokac', 'toka', 'tokafmt', 'tokalsp'}:
+        errors.append('0.20 receipt missing four_tool_versions dictionary')
+    else:
+        ver_exp = label.removeprefix('v')
+        for tool in ('tokac', 'toka', 'tokafmt', 'tokalsp'):
+            v_str = tools_dict.get(tool)
+            if not isinstance(v_str, str) or not v_str:
+                errors.append(f'0.20 receipt missing tool version for {tool}')
+            elif ver_exp not in v_str or '1.0.0-rc' in v_str or '0.18.' in v_str or '0.19.' in v_str:
+                errors.append(f'0.20 tool version mismatch for {tool}: {v_str}')
+
+    neg = receipt.get('negative_controls')
+    if not isinstance(neg, dict) or type(neg.get('total')) is not int or type(neg.get('passed')) is not int or neg.get('total') != 12 or neg.get('passed') != 12:
+        errors.append('0.20 negative_controls must be dict with total=12 and passed=12')
+    else:
+        neg_modes = neg.get('modes')
+        if not isinstance(neg_modes, list) or neg_modes != ['--check-only', '-c', '--emit-llvm']:
+            errors.append('0.20 negative_controls modes must be exactly [--check-only, -c, --emit-llvm]')
+
+    pos = receipt.get('positive_controls')
+    if not isinstance(pos, dict) or type(pos.get('total')) is not int or type(pos.get('passed')) is not int or pos.get('total') != 3 or pos.get('passed') != 3 or pos.get('native_rc0') is not True:
+        errors.append('0.20 positive_controls must be dict with total=3, passed=3, and native_rc0=True')
+
+    fmt_idem = receipt.get('tokafmt_idempotence')
+    if not isinstance(fmt_idem, dict) or type(fmt_idem.get('passes')) is not int or fmt_idem.get('passes') != 2 or \
+            fmt_idem.get('idempotent') is not True or type(fmt_idem.get('idempotent')) is not bool or \
+            not isinstance(fmt_idem.get('sha256'), str) or not re.fullmatch(r'[0-9a-f]{64}', fmt_idem.get('sha256', '')):
+        errors.append('0.20 tokafmt_idempotence must be dict with passes=2, idempotent=True, and 64-hex sha256')
+
+    vis = receipt.get('visibility_matrix')
+    if not isinstance(vis, dict) or type(vis.get('total')) is not int or type(vis.get('passed')) is not int or vis.get('total') != 41 or vis.get('passed') != 41:
+        errors.append('0.20 visibility_matrix must be dict with total=41 and passed=41')
+
+    conv = receipt.get('compositional_convergence')
+    if not isinstance(conv, dict) or type(conv.get('total')) is not int or type(conv.get('passed')) is not int or conv.get('total') != 60 or conv.get('passed') != 60:
+        errors.append('0.20 compositional_convergence must be dict with total=60 and passed=60')
+
+    expected_counts_groups = {
+        'version': 4,
+        'source_hidden_tki': 6,
+        'negative_controls': 36,
+        'positive_controls': 15,
+        'tokafmt_idempotence': 2,
+        'visibility_matrix': 1,
+        'compositional_convergence': 1,
+    }
+    counts = receipt.get('counts')
+    if not isinstance(counts, dict):
+        errors.append('0.20 counts missing or not a dict')
+    else:
+        if type(counts.get('total_receipts')) is not int or type(counts.get('passed')) is not int or type(counts.get('failed')) is not int or \
+                counts.get('total_receipts') != 65 or counts.get('passed') != 65 or counts.get('failed') != 0:
+            errors.append('0.20 counts values mismatch: expected total 65, passed 65, failed 0')
+        if counts.get('groups') != expected_counts_groups:
+            errors.append('0.20 counts groups mismatch or invalid')
+
+    seen_names = set()
+    fmt_shas = {}
+    for r in recs:
+        if not isinstance(r, dict):
+            errors.append('0.20 command receipt is not a dict')
+            continue
+        r_name = r.get('name')
+        if not isinstance(r_name, str) or not r_name:
+            errors.append('0.20 command receipt missing name')
+            continue
+        if r_name in seen_names:
+            errors.append(f'0.20 duplicate command receipt name: {r_name}')
+        seen_names.add(r_name)
+
+        if r_name not in EXPECTED_020_RECEIPT_NAMES:
+            errors.append(f'0.20 unexpected command receipt name: {r_name}')
+
+        if r.get('ok') is not True or r.get('result') != 'pass':
+            errors.append(f'0.20 command receipt {r_name} ok must be True and result must be pass')
+
+        if r.get('signal') is not None or r.get('termination') is not None or r.get('error') is not None:
+            errors.append(f'0.20 command receipt {r_name} indicates abnormal error/termination')
+
+        argv = r.get('argv') or r.get('cmd')
+        if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a for a in argv):
+            errors.append(f'0.20 command receipt {r_name} argv invalid')
+            continue
+
+        if any('--encap-epoch' in a for a in argv):
+            errors.append(f'0.20 command receipt {r_name} must use default 0.20 entry without --encap-epoch override')
+
+        cwd = r.get('cwd')
+        if not isinstance(cwd, str) or not cwd:
+            errors.append(f'0.20 command receipt {r_name} cwd missing')
+            cwd = ''
+
+        ms = r.get('execution_ms')
+        if type(ms) not in (int, float) or isinstance(ms, bool) or not math.isfinite(ms) or ms <= 0:
+            errors.append(f'0.20 command receipt {r_name} execution_ms invalid')
+
+        exit_code = r.get('exit_code')
+        if type(exit_code) is not int or isinstance(exit_code, bool):
+            errors.append(f'0.20 command receipt {r_name} exit_code invalid')
+            continue
+
+        out_s = r.get('stdout')
+        err_s = r.get('stderr')
+        if not isinstance(out_s, str) or not isinstance(err_s, str):
+            errors.append(f'0.20 command receipt {r_name} stdout/stderr missing or not string')
+            continue
+
+        if hashlib.sha256(out_s.encode('utf-8')).hexdigest() != r.get('stdout_sha256'):
+            errors.append(f'0.20 command receipt {r_name} stdout_sha256 mismatch')
+        if hashlib.sha256(err_s.encode('utf-8')).hexdigest() != r.get('stderr_sha256'):
+            errors.append(f'0.20 command receipt {r_name} stderr_sha256 mismatch')
+
+        prog = argv[0].replace('\\', '/')
+        norm_prog = os.path.normpath(prog if os.path.isabs(prog) else os.path.join(cwd, prog))
+
+        is_neg = r_name.startswith('neg-')
+        is_pos = r_name.startswith('pos-')
+        is_ver = r_name.startswith('version-')
+
+        if is_ver:
+            tool = r_name.removeprefix('version-')
+            if exit_code != 0:
+                errors.append(f'0.20 version command {r_name} exit code must be 0 (got {exit_code})')
+            if len(argv) != 2 or argv[1] != '--version':
+                errors.append(f'0.20 version command {r_name} argv must match template [<tool>, --version]')
+            if not expected_tools or norm_prog not in expected_tools.get(tool, ()):
+                errors.append(f'0.20 version command {r_name} program {norm_prog} does not belong to SDK_root {sdk_root}')
+            ver_exp = label.removeprefix('v')
+            if ver_exp not in out_s and ver_exp not in err_s:
+                errors.append(f'0.20 version command {r_name} output missing {ver_exp}')
+            if not out_s.strip():
+                errors.append(f'0.20 version command {r_name} stdout must not be empty')
+
+        elif is_neg:
+            if exit_code != 1:
+                errors.append(f'0.20 negative command {r_name} exit code must be 1 (got {exit_code})')
+            if r.get('artifact_absent') is not True:
+                errors.append(f'0.20 negative command {r_name} artifact_absent must be True')
+            if not expected_tools or norm_prog not in expected_tools.get('tokac', ()):
+                errors.append(f'0.20 negative command {r_name} compiler mismatch: {norm_prog} not in SDK tokac')
+
+            if r_name in ('neg-tki-missing-iface', 'neg-tki-corrupt-iface', 'neg-tki-format6-iface', 'neg-tki-lang019-iface', 'neg-tki-epoch018-iface'):
+                if '--check-only' not in argv:
+                    errors.append(f'0.20 negative command {r_name} missing --check-only flag')
+                if not any('consumer.tk' in a.replace('\\', '/') for a in argv):
+                    errors.append(f'0.20 negative command {r_name} missing consumer.tk fixture in argv')
+                combined_io = out_s + '\n' + err_s
+                if 'E0901' not in combined_io:
+                    errors.append(f'0.20 negative command {r_name} missing expected E0901 diagnostic')
+                if r_name == 'neg-tki-format6-iface' and 'Interface format version mismatch (expected 7, got 6)' not in combined_io:
+                    errors.append(f'0.20 negative command {r_name} missing format version mismatch diagnostic')
+                if r_name == 'neg-tki-lang019-iface' and 'Interface language_epoch mismatch (expected 0.20, got 0.19)' not in combined_io:
+                    errors.append(f'0.20 negative command {r_name} missing language_epoch mismatch diagnostic')
+                if r_name == 'neg-tki-epoch018-iface' and 'Interface encap_epoch mismatch (expected 0.19, got 0.18)' not in combined_io:
+                    errors.append(f'0.20 negative command {r_name} missing encap_epoch mismatch diagnostic')
+            else:
+                m = re.fullmatch(r'neg-(.+)-(check-only|compile-obj|emit-llvm)', r_name)
+                if not m:
+                    errors.append(f'0.20 negative command {r_name} malformed name')
+                else:
+                    cid = m.group(1)
+                    mode = m.group(2)
+                    if cid not in AUTH_NEG_020_DIAGNOSTICS:
+                        errors.append(f'0.20 negative command {r_name} unknown case id {cid}')
+                    else:
+                        auth_diag = AUTH_NEG_020_DIAGNOSTICS[cid]
+                        if auth_diag not in (out_s + '\n' + err_s):
+                            errors.append(f'0.20 negative command {r_name} stderr missing authoritative diagnostic {auth_diag}')
+                        if mode == 'check-only' and '--check-only' not in argv:
+                            errors.append(f'0.20 negative command {r_name} mode check-only missing --check-only in argv')
+                        elif mode == 'compile-obj' and '-c' not in argv:
+                            errors.append(f'0.20 negative command {r_name} mode compile-obj missing -c in argv')
+                        elif mode == 'emit-llvm' and '--emit-llvm' not in argv:
+                            errors.append(f'0.20 negative command {r_name} mode emit-llvm missing --emit-llvm in argv')
+                        if not any(a.endswith(f'{cid}.tk') or f'/{cid}.tk' in a.replace('\\', '/') for a in argv):
+                            errors.append(f'0.20 negative command {r_name} missing fixture {cid}.tk in argv')
+
+        elif is_pos:
+            if exit_code != 0:
+                errors.append(f'0.20 positive command {r_name} exit code must be 0 (got {exit_code})')
+
+            if r_name == 'pos-tki-provider-compile':
+                if not expected_tools or norm_prog not in expected_tools.get('tokac', ()):
+                    errors.append(f'0.20 positive command {r_name} compiler mismatch: {norm_prog} not in SDK tokac')
+                if '-c' not in argv:
+                    errors.append(f'0.20 positive command {r_name} missing -c in argv')
+                if '--emit-interface' not in argv:
+                    errors.append(f'0.20 positive command {r_name} missing --emit-interface in argv')
+                if not any('provider' in a for a in argv):
+                    errors.append(f'0.20 positive command {r_name} missing provider source in argv')
+            elif r_name in ('pos-tokafmt-pass1', 'pos-tokafmt-pass2'):
+                if not expected_tools or norm_prog not in expected_tools.get('tokafmt', ()):
+                    errors.append(f'0.20 positive command {r_name} formatter mismatch: {norm_prog} not in SDK tokafmt')
+                if not out_s.strip() or 'pub fn format_probe(' not in out_s:
+                    errors.append(f'0.20 positive command {r_name} stdout missing formatted probe content')
+                fmt_shas[r_name] = r.get('stdout_sha256')
+            elif r_name == 'pos-019-visibility-matrix':
+                py_base = os.path.basename(norm_prog)
+                if not (py_base.startswith('python') or norm_prog == os.path.normpath(sys.executable)):
+                    errors.append(f'0.20 positive command {r_name} executable must be python (got {norm_prog})')
+                if not any('test_019_stage2_visibility_sema.py' in a for a in argv):
+                    errors.append(f'0.20 positive command {r_name} argv missing test_019_stage2_visibility_sema.py')
+                if '--build-dir' not in argv:
+                    errors.append(f'0.20 positive command {r_name} argv missing --build-dir')
+                if 'All 41 Stage 2/4.1 verification checks PASSED.' not in out_s:
+                    errors.append(f'0.20 positive command {r_name} missing real 41-check visibility matrix output')
+            elif r_name == 'pos-compositional-convergence':
+                py_base = os.path.basename(norm_prog)
+                if not (py_base.startswith('python') or norm_prog == os.path.normpath(sys.executable)):
+                    errors.append(f'0.20 positive command {r_name} executable must be python (got {norm_prog})')
+                if not any('test_compositional_convergence.py' in a for a in argv):
+                    errors.append(f'0.20 positive command {r_name} argv missing test_compositional_convergence.py')
+                if '--build-dir' not in argv:
+                    errors.append(f'0.20 positive command {r_name} argv missing --build-dir')
+                if not out_s.strip() or not any(x in out_s for x in ('convergence passed', 'Compositional Convergence')):
+                    errors.append(f'0.20 positive command {r_name} missing real convergence output')
+            else:
+                m = re.fullmatch(r'pos-(.+)-(check-only|emit-llvm|compile-obj|binary-build|native-execution)', r_name)
+                if not m:
+                    errors.append(f'0.20 positive command {r_name} malformed name')
+                else:
+                    cid = m.group(1)
+                    step = m.group(2)
+                    if cid not in POS_020_SET:
+                        errors.append(f'0.20 positive command {r_name} unknown case id {cid}')
+                    else:
+                        if step in ('check-only', 'emit-llvm', 'compile-obj', 'binary-build'):
+                            if not expected_tools or norm_prog not in expected_tools.get('tokac', ()):
+                                errors.append(f'0.20 positive command {r_name} compiler mismatch: {norm_prog} not in SDK tokac')
+                            if step == 'check-only' and '--check-only' not in argv:
+                                errors.append(f'0.20 positive command {r_name} step check-only missing --check-only')
+                            elif step == 'emit-llvm' and '--emit-llvm' not in argv:
+                                errors.append(f'0.20 positive command {r_name} step emit-llvm missing --emit-llvm')
+                            elif step == 'compile-obj' and '-c' not in argv:
+                                errors.append(f'0.20 positive command {r_name} step compile-obj missing -c')
+                            elif step == 'binary-build' and '-o' not in argv:
+                                errors.append(f'0.20 positive command {r_name} step binary-build missing -o')
+                            if not any(cid in a for a in argv):
+                                errors.append(f'0.20 positive command {r_name} argv missing case {cid}')
+                        elif step == 'native-execution':
+                            base_prog = os.path.basename(norm_prog)
+                            if base_prog not in (cid, f'{cid}.exe'):
+                                errors.append(f'0.20 positive command {r_name} program must be {cid} (got {base_prog})')
+
+    if fmt_shas.get('pos-tokafmt-pass1') and fmt_shas.get('pos-tokafmt-pass2'):
+        if fmt_shas['pos-tokafmt-pass1'] != fmt_shas['pos-tokafmt-pass2']:
+            errors.append('0.20 tokafmt pass1 and pass2 stdout_sha256 mismatch (not idempotent)')
+        if isinstance(fmt_idem, dict) and fmt_idem.get('sha256') != fmt_shas['pos-tokafmt-pass2']:
+            errors.append('0.20 tokafmt_idempotence.sha256 mismatch with pos-tokafmt-pass2 stdout_sha256')
+
+    missing_names = EXPECTED_020_RECEIPT_NAMES - seen_names
+    if missing_names:
+        errors.append(f'0.20 receipts missing expected commands: {sorted(missing_names)[:5]}')
+
+    return errors
+
+
 def summary_errors(summary,revision,label):
     errors=[]
     if summary.get('schema')!='toka.release-qualification-summary' or summary.get('version')!=2 or \
@@ -3609,6 +4099,11 @@ def summary_errors(summary,revision,label):
             r_errors = candidate_019_receipt_errors(row.get('candidate_019'), revision, label, target=row.get('target'))
             if r_errors:
                 errors.append('0.19 installed candidate proof invalid for %s: %s' % (row.get('target'), '; '.join(r_errors)))
+    if label.startswith('v0.20.'):
+        for row in summary.get('reports',[]):
+            r_errors = candidate_020_receipt_errors(row.get('candidate_020'), revision, label, target=row.get('target'))
+            if r_errors:
+                errors.append('0.20 installed candidate proof invalid for %s: %s' % (row.get('target'), '; '.join(r_errors)))
     optional=summary.get('optional_targets')
     if not isinstance(optional,dict) or set(optional)!={OPTIONAL}:errors.append('optional target status must be explicit')
     else:errors+=optional_errors(optional[OPTIONAL],revision,label)

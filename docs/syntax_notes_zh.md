@@ -33,14 +33,14 @@
 | `auto &#p` | 可重绑定 | `#`置于指针符号右侧语义为指针本身可重绑定，对所有指针形态都有效 |
 | 仅考虑指针的种类和对实体的读写权限，以上组合就是全部，该可变性完全独立于指针本身的可重绑性| 即指针对实体的读写只有2 中，只读或读写，不存在自动继承的情况 | |
 | **缺席与物理零地址** | | |
-| `null` | raw pointer 的物理零地址字面值 | 只能流入 `nul *T`，不能流入 `*T`、`^T`、`~T` 或 `&T` |
+| `null` | raw pointer 的物理零地址字面值 | 只能流入 `?T`，不能流入 `*T`、`^T`、`~T` 或 `&T` |
 | `miss` | `T | miss` 的操作未命中分支 | 只能由声明返回 `T | miss` 的函数在 `return` 中构造 |
 | `Option<T>::None` | 显式零或一个存储状态 | 不等于 `miss`，也不会被隐式 flatten |
-| `auto nul *x: i32 = null` | raw 地址可能为零 | `nul` 是 raw-pointer 专属物理属性 |
+| `auto ?x: i32 = null` | raw 地址可能为零 | `?` 是 raw-pointer 专属物理可空帽（旧 `nul *` 报 E0488） |
 | `T?` / `none` | 已永久删除 | 分别报告 E0484 / E0486 |
 | `nul ^T` / `nul ~T` | 已永久删除 | 报 E0485；Safe owning handle 必须指向有效对象 |
-| nullable assertion operator | 已永久删除 | 报 E0487；raw pointer 使用 `.unwrap()`，结果类型使用 match/方法 |
-| `if *ptr == null` 或 `guard *ptr` | 检查 `nul *T` 是否为零 | 不跨越 `Option`、`Result` 或 `T | miss` 边界 |
+| nullable assertion operator | 已永久删除 | 报 E0487；raw pointer 使用 `(?p).unwrap()`，结果类型使用 match/方法 |
+| `if ?ptr == null` 或 `guard ?ptr` | 检查 `?T` 是否为零 | 不跨越 `Option`、`Result` 或 `T | miss` 边界 |
 | **未完成编辑** | | |
 | `todo` | 类型待办 | 只能作为表达式使用的保留关键字；它消耗已经确定的需求，但不是变量、值、place、能力或资源。任何可达待办都使检查/构建失败，且不产生编译产物。|
 | `auto value: i32 = todo` | 有完整需求的待办 | 报 `E04603`，并可由 `toka todo-goals --json --check-only file.tk` 输出 `i32` 需求；该 JSON 不是普通 `Allow` 证据。|
@@ -60,7 +60,7 @@
 | `impl MyShape { fn method(self) }` | 方法定义 | `impl` 块定义类型方法 |
 | `fn mut_method(obj#)` | 可变方法 | `obj#` 声明参数可变，调用时必须显式标注：`o#.m()` |
 | `obj.method()` | 方法调用 | 点号调用 |
-| `fn foo() -> nul *#Node#` | may-zero raw handle 与两层写权限组合 | `?` payload 属性已删除；最复杂的有效组合只保留 raw `nul`、handle `#` 与 payload `#` |
+| `fn foo() -> ?#Node#` | may-zero raw handle 与两层写权限组合 | 后缀 `?` payload 属性已删除；可空 raw handle 使用前缀 `?`，配合 handle `#` 与 payload `#` |
 | **闭包 (Closure)** | | |
 | `auto f = { x, y => x + y }` | 闭包 (常规) | 使用 `{}` 作为边界，`=>` 分隔参数与闭包体。默认隐式借用外部环境变量 |
 | `auto f = { .a + 1 }` | 隐式参数 (短语) | 省略参数与 `=>`，使用 `.a, .b` 作为匿名参数（类似 Swift 的 `$0`），绝佳的流式 API 伴侣 |
@@ -70,7 +70,7 @@
 | `auto f = { [cede a] => a + .a }`| 混合形态 | 若仅声明捕获而不声明实参，必须跟随 `=>`。然后在闭包体中照常使用隐式参数 `.a` |
 | **数据结构 (Shape)** | | |
 | `shape Point(x: i32, y: i32)` | 结构体 (Struct) | 使用圆括号，字段需命名 |
-| `shape VecI32(nul *buf#: [i32], id: i32)` | 成员属性 | `nul` 仅表示 raw 地址 may-zero；`#` 表示 payload 可写 |
+| `shape VecI32(?buf#: [i32], id: i32)` | 成员属性 | `?` 表示 raw 地址 may-zero；`#` 表示 payload 可写 |
 | `auto vec#: VecI32` |  成员的可变性继承父实例的可变性 | 此时`vec`本身是可变的，所以`*buf`就是可重绑定的，`id`是可变的，依据**指针变量**一节的规定可以推断，可变性继承链在指针的实体上被阻断|
 | `auto p = Point(x=1, y=2)` | 列表初始化 | **【强制铁律】实例化结构体（Shape）时必须使用具名参数 (Named Parameters) 进行赋值。即使只有一个字段也不例外。** |
 | ~~`auto p = Point(1, 2)`~~ | ~~列表初始化，按位置~~ | ~~铁律：可以不具名按位置初始化,且不推荐使用这种方式初始化，除非你非常确定字段的顺序不会改变~~ <br> **【已废除】实例化结构体按位置顺序初始化已彻底废除，强行拦截抛出 `E042A`。** |
@@ -177,7 +177,7 @@
 | `auto x: 'T = v` | `auto 'x: T = v` | **局部变量同理**：绑定名负责承载形态豁免，类型名保持裸泛型参数。后续使用该变量时也写 `'x`，如 `return 'x` 或 `cede 'x`。 |
 | `^arr[i]` 或 `arr.^at(i)` | `arr[i]` 或 `arr.at(i)` | **铁律**: `arr[i]` 严格等价于 `arr.at(i)`。函数/方法调用和下标访问自带返回签名（包含帽子形态），**绝对禁止**在调用表达式上戴帽。若返回值为指针，交接时带名字的左值接收方必须显式戴帽（如 `auto ^p = arr[i]` 或 `^p = foo()`），除非左值也是免写帽的签名表达式且形态一致（如 `arr_A[i] = arr_B[i]`）。 |
 | `~m.a` / `*p.field` | `m.a` (读实体)<br>`m.~a` (取指针Handle) | **铁律 (链式访问单帽置尾原则)**：点号 `.` 的左侧必须是灵魂 (Soul，也就是实体结构)，绝不能是戴帽子的 Handle形态。因此，在点号链式访问中，**所有中间环节必须是裸名**。如果你试图操作字段的指针本身，帽子**只能紧挨在最后一环的成员名之前** (如 `a.b.~c`)。向中间环节戴帽（如 `~m.a` / `a.~b.c`）是严重错误。 |
-| `extern fn libc_free(*p: void)`<br>`unsafe { *p = null }` | `extern fn libc_free(nul *p: void)`<br>`auto nul *p = null:nul *void` | **raw pointer 零地址铁律**：`*T` 表示非零 raw 地址，`nul *T` 才表示物理上可能为零。即使在 `unsafe` 中，也不再允许用 null 构造、赋值、返回或比较普通 `*T`；从 `nul *T` 取得 `*T` 必须显式 `.unwrap()`。FFI 声明必须诚实标注 may-zero 参数与返回值。|
+| `extern fn libc_free(*p: void) -> void`<br>`unsafe { *p = null }` | `extern fn libc_free(?p: void) -> void`<br>`auto ?p = null:?void` | **raw pointer 零地址铁律**：`*T` 表示非零 raw 地址，`?T` 才表示物理上可能为零（旧 `nul *T` 报 E0488）。即使在 `unsafe` 中，也不再允许用 null 构造、赋值、返回或比较普通 `*T`；从 `?T` 取得 `*T` 必须显式 `guard ?p`、`if ?p != null` 或 `(?p).unwrap()`。FFI 声明必须诚实标注 may-zero 参数与返回值。|
 | `impl Foo@Encap { fn drop(self#) {} }` | `impl Foo { pub fn clone(self) -> Foo { ... } }`（仅在需要显式复制时） | **铁律**：`@Encap` 仅定义封装与析构边界，必须有唯一的 `drop` hook。资源默认不能复制；如需复制，在普通 `impl` 中提供显式 `clone` 方法。不存在 `clone = delete` 或隐式复制规则。 |
 | ~~`shape U(as string \| as i32)` (裸联合体包含受控资源)~~ <br> ~~`shape U(as i32 \| as f32)` (声明/使用裸联合体)~~ | ~~为其包裹枚举或手动提供 `@Encap` 析构~~ <br> 使用 **Tagged Enum** 或 **等宽占位类型 + `core/mem::bit_cast`** | ~~**铁律 (E0801: Union 的资源禁令)**：严禁在 `Untagged Union` 内直接存放包含 `@Encap/drop` 生命周期管理的类型（如 `string`、`Vec`）。因运行时无从知晓当前变体，放任自动生成 `drop` 会导致严重的段错误。~~ <br> **【已废除】Toka 已彻底废除裸 Union (Bare Union)，全面杜绝类型双关未定义行为（UB）。** C-FFI 交互含有 union 的结构体（如 `epoll_event`）时，最佳实践是声明等宽 of 无符号整数或字节数组作为占位符，在系统边界通过 `bit_cast` 重新解释。<br>**🚨 C-FFI ABI 调用约定（Calling Convention）致命陷阱**：与 C 语言交互包含 Union 的结构体时，**请务必通过指针（Pointer/Reference）传递，严禁跨越 FFI 边界按值（Pass-by-Value）传递等宽占位符**！ |
 | `auto x = cede map.inner` | `auto x = cede map` (整体交出) | **铁律 (Partial Move 局部夺舍禁令)**：绝对禁止使用 `cede` 强行剥夺带有生命周期托管的宿主对象（如包含 `@Encap` 的复杂容器）内部属性！强行拆散闭环会导致宿主进入不可恢复的报废污染状态，破坏安全析构链。 |

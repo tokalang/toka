@@ -46,11 +46,11 @@ fn main() -> i32 {
 ''', None)
 for name, mutation in {
     'raw_import': 'auto data = unsafe Vec<u8>::from_raw(null, 0:usize, 0:usize)',
-    'direct_constructor': 'auto data = Vec<u8>(*buf=null, len=0:usize, cap=0:usize)',
+    'direct_constructor': 'auto data = Vec<u8>(?buf=null, len=0:usize, cap=0:usize)',
     'overwritten_length': 'auto data# = Vec<u8>::new(); data.len = 1:usize',
     'overwritten_capacity': 'auto data# = Vec<u8>::new(); data.cap = 1:usize',
-    'raw_export': 'auto data# = Vec<u8>::new(); auto nul *pointer = unsafe data.unsafe_as_raw()',
-    'raw_takeaway': 'auto data# = Vec<u8>::new(); auto nul *pointer# = unsafe data#.unsafe_into_raw()',
+    'raw_export': 'auto data# = Vec<u8>::new(); auto ?pointer = unsafe data.unsafe_as_raw()',
+    'raw_takeaway': 'auto data# = Vec<u8>::new(); auto ?pointer# = unsafe data#.unsafe_into_raw()',
     'unproved_length': 'auto data# = Vec<u8>::with_capacity(4); unsafe data#.unsafe_set_len(4)',
 }.items():
     gate.CASES[name] = (PREFIX + '\nfn main() -> i32 {\n' + mutation + '''
@@ -110,8 +110,8 @@ fn main() -> i32 {
 }
 ''', 'E04661')
 gate.CASES['same_name_not_contract'] = ('''import std/task::{block_on}
-shape Bytes(nul *buf: u8, len: usize)
-fn make(nul *data: u8) -> async Bytes { return Bytes(*buf=*data, len=0:usize) }
+shape Bytes(?buf: u8, len: usize)
+fn make(?data: u8) -> async Bytes { return Bytes(?buf=?data, len=0:usize) }
 fn main() -> i32 { auto value = block_on(make(null)); return 0 }
 ''', 'E04661')
 gate.CASES['cache_requires_current_actual'] = (PREFIX + '''
@@ -352,9 +352,9 @@ fn main() -> i32 {
         assert baseline.returncode == 0, baseline.stderr
         vec = library / 'std/vec.tk'
         original = vec.read_text()
-        pattern = 'self.buf[self.len] = cede val\n            self.len += 1'
+        pattern = 'self.buf[self.len] = cede val\n                self.len += 1'
         assert original.count(pattern) == 1
-        vec.write_text(original.replace(pattern, 'self.buf[self.len] = cede val\n            self.len += 2'))
+        vec.write_text(original.replace(pattern, 'self.buf[self.len] = cede val\n                self.len += 2'))
         check_error(source, 'E04661', 'changed-schema')
         vec.write_text(original)
         provider = work / 'byte_provider.tk'

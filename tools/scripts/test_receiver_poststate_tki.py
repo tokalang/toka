@@ -10,7 +10,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CANDIDATE = "0.9.9-38"
+CANDIDATE = "0.20.0-1"
 
 
 def require(condition, message):
@@ -214,10 +214,10 @@ fn main() -> i32 {
                 "E0455" not in old.stderr,
                 "old interface was accepted or silently replayed")
 
-        require("format_version: 6" in original,
-                "expected format_version: 6 in emitted interface")
+        require("format_version: 7" in original,
+                "expected format_version: 7 in emitted interface")
         mutated_format = original.replace(
-            "format_version: 6", "format_version: 5", 1)
+            "format_version: 7", "format_version: 6", 1)
         require(mutated_format != original,
                 "format_version replacement was a no-op")
         interface.write_text(mutated_format)
@@ -246,7 +246,7 @@ fn main() -> i32 {
         original = interface.read_text()
         require("pub unsafe fn make()" in original and
                 "pub unsafe fn make_cell()" in original and
-                "format_version: 6" in original,
+                "format_version: 7" in original,
                 "interface lost the unsafe call boundary")
         provider.rename(work / "provider.tk.hidden")
         consumer = work / "consumer.tk"

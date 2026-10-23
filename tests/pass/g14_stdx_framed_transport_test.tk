@@ -492,7 +492,7 @@ fn coordinator() -> async i32 {
         buf#.push(99:u8)
 
         auto task = reader#.read_frame_async(cede buf, 2000:i32)
-        auto nul *tcb = task_get_coro_handle<Result<FramedReadResult, FramedError>>(task)
+        auto ?tcb = task_get_coro_handle<Result<FramedReadResult, FramedError>>(task)
         auto *live_tcb = tcb.unwrap()
         toka_task_start(*live_tcb)
 
@@ -518,7 +518,7 @@ fn coordinator() -> async i32 {
         wbuf#.push(1:u8)
         wbuf#.push(2:u8)
         auto wtask = writer#.write_frame_async(cede wbuf, 2000:i32)
-        auto nul *wtcb = task_get_coro_handle<Result<FramedWriteResult, FramedError>>(wtask)
+        auto ?wtcb = task_get_coro_handle<Result<FramedWriteResult, FramedError>>(wtask)
         auto *wlive_tcb = wtcb.unwrap()
         toka_task_start(*wlive_tcb)
 

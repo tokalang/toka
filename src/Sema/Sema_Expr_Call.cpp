@@ -874,6 +874,13 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
       if (type && type->isReference() &&
           (!destinationType || !destinationType->isReference()))
         return resolveExplicitCedeStage0TypeReadOnly(type->getPointeeType());
+      if (type && type->isRawPointer() && !m_IsAssignmentTarget &&
+          !preservesResolvedMorphology &&
+          !(type->getPointeeType() &&
+            (type->getPointeeType()->isSlice() ||
+             type->getPointeeType()->isArray())) &&
+          (!type->IsNullable || hasActiveNonZeroFact(actualName)))
+        return resolveExplicitCedeStage0TypeReadOnly(type->getPointeeType());
       return type;
     }
   }
@@ -908,8 +915,42 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
         return std::make_shared<ReferenceType>(referent);
       }
       if (type && access.Prefix.empty() && !access.IsMorphicIdentity &&
-          !(contract && contract->isWholeValue()))
+          !(contract && contract->isWholeValue())) {
+        if (type->isRawPointer()) {
+          if (!m_IsAssignmentTarget &&
+              !(type->getPointeeType() &&
+                (type->getPointeeType()->isSlice() ||
+                 type->getPointeeType()->isArray())) &&
+              (!type->IsNullable ||
+               hasActiveNonZeroFact(getPathString(member))))
+            return resolveExplicitCedeStage0TypeReadOnly(type->getPointeeType());
+          return type;
+        }
         return resolveExplicitCedeStage0TypeReadOnly(type->getSoulType());
+      }
+      if (type && type->isRawPointer() && !access.Prefix.empty()) {
+        size_t declRawD = 0;
+        const size_t maxDeclRawD =
+            (declaration && declaration->InstantiationTemplate &&
+             !field.Permission.HandleLayers.empty())
+                ? field.Permission.HandleLayers.size()
+                : std::numeric_limits<size_t>::max();
+        for (auto cur = type;
+             cur && cur->isRawPointer() && declRawD < maxDeclRawD;
+             cur = cur->getPointeeType()) {
+          ++declRawD;
+        }
+        size_t reqRawHats = 0;
+        for (char c : access.Prefix) {
+          if (c == '*' || c == '?')
+            ++reqRawHats;
+        }
+        if (reqRawHats == declRawD + 1) {
+          if (destinationType && destinationType->isRawPointer())
+            return resolveExplicitCedeStage0TypeReadOnly(destinationType);
+          return std::make_shared<RawPointerType>(type);
+        }
+      }
       return type;
     }
     return toka::Type::fromString("unknown");
@@ -1091,6 +1132,9 @@ std::shared_ptr<Type> Sema::queryExplicitCedeStage0NonCallType(
   if (dynamic_cast<StringExpr *>(source))
     return resolveExplicitCedeStage0TypeReadOnly(
         destinationType ? destinationType : Type::fromString("cstr"));
+  if (dynamic_cast<NullExpr *>(source) && destinationType &&
+      destinationType->isRawPointer() && destinationType->IsNullable)
+    return resolveExplicitCedeStage0TypeReadOnly(destinationType);
   return toka::Type::fromString("unknown");
 }
 
@@ -1270,8 +1314,33 @@ Sema::queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *value) {
     return queryExplicitCedeStage0AccessCapabilityReadOnly(postfix->LHS.get());
   if (auto *unary = dynamic_cast<UnaryExpr *>(value); unary && unary->NativeSyncManagedSlotTarget)
     return getAccessCapability(unary);
-  if (auto *unary = dynamic_cast<UnaryExpr *>(value))
+  if (auto *unary = dynamic_cast<UnaryExpr *>(value)) {
+    if (unary->Op == TokenType::Star) {
+      if (unary->ResolvedType && unary->ResolvedType->isRawPointer() &&
+          unary->ResolvedType->getPointeeType() &&
+          unary->ResolvedType->getPointeeType()->isRawPointer()) {
+        auto directPointee = unary->ResolvedType->getPointeeType();
+        auto baseCap =
+            queryExplicitCedeStage0AccessCapabilityReadOnly(unary->RHS.get());
+        return applyFlowCeiling(
+            {directPointee->IsWritable && !directPointee->IsBlocked,
+             unary->ResolvedType->IsWritable || baseCap.HandleRebindable,
+             false});
+      }
+      if (auto *innerUnary = dynamic_cast<UnaryExpr *>(unary->RHS.get());
+          innerUnary && innerUnary->Op == TokenType::Star) {
+        auto innerCap =
+            queryExplicitCedeStage0AccessCapabilityReadOnly(innerUnary);
+        const bool directPointeeWritable =
+            innerUnary->IsRebindable &&
+            (innerCap.HandleRebindable || innerCap.PayloadWritable);
+        return applyFlowCeiling(
+            {directPointeeWritable,
+             unary->IsRebindable || innerCap.HandleRebindable, false});
+      }
+    }
     return queryExplicitCedeStage0AccessCapabilityReadOnly(unary->RHS.get());
+  }
   if (auto *variable = dynamic_cast<VariableExpr *>(value)) {
     SymbolInfo *info = nullptr;
     std::string actualName = variable->Name;
@@ -1282,8 +1351,15 @@ Sema::queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *value) {
           m_InUnsafeContext && info->TypeObj && info->TypeObj->isRawPointer() &&
           info->TypeObj->getPointeeType() && info->TypeObj->getPointeeType()->IsWritable &&
           !info->TypeObj->getPointeeType()->IsBlocked;
-      return applyFlowCeiling({info->IsSoulMutable() || rawPayload,
-                               info->Permission.IdentityRebindable, false});
+      const bool multiRawDirectPointee =
+          info->TypeObj && info->TypeObj->isRawPointer() &&
+          info->TypeObj->getPointeeType() &&
+          info->TypeObj->getPointeeType()->isRawPointer() &&
+          info->TypeObj->getPointeeType()->IsWritable &&
+          !info->TypeObj->getPointeeType()->IsBlocked;
+      return applyFlowCeiling(
+          {info->IsSoulMutable() || rawPayload || multiRawDirectPointee,
+           info->Permission.IdentityRebindable, false});
     }
     return {};
   }
@@ -1311,11 +1387,61 @@ Sema::queryExplicitCedeStage0AccessCapabilityReadOnly(Expr *value) {
       if (Type::stripMorphology(field.Name) != access.MemberName)
         continue;
       auto fieldType = getPhysicalType(field);
+      if (fieldType && fieldType->isRawPointer()) {
+        size_t declRawD = 0;
+        for (auto cur = fieldType; cur && cur->isRawPointer();
+             cur = cur->getPointeeType()) {
+          ++declRawD;
+        }
+        struct RawHatCapInfo {
+          bool HasNull = false;
+          bool Rebindable = false;
+        };
+        std::vector<RawHatCapInfo> reqRawHats;
+        for (size_t idx = 0; idx < access.Prefix.size(); ++idx) {
+          char c = access.Prefix[idx];
+          if (c == '*' || c == '?') {
+            RawHatCapInfo h;
+            h.HasNull = (c == '?');
+            if (idx + 1 < access.Prefix.size() && access.Prefix[idx + 1] == '#') {
+              h.Rebindable = true;
+              ++idx;
+            }
+            reqRawHats.push_back(h);
+          }
+        }
+        if (declRawD > 0 && reqRawHats.size() == declRawD + 1) {
+          const bool slotWritable =
+              reqRawHats[1].Rebindable && field.IsRebindable &&
+              !field.IsRebindBlocked && base.PayloadWritable &&
+              !base.PayloadFlowRestricted;
+          return applyFlowCeiling(
+              {slotWritable, reqRawHats[0].Rebindable, !slotWritable});
+        }
+        if (declRawD >= 2 && reqRawHats.size() == declRawD) {
+          auto directPointee = fieldType->getPointeeType();
+          const bool directWritable =
+              directPointee && directPointee->IsWritable &&
+              !directPointee->IsBlocked;
+          return applyFlowCeiling(
+              {directWritable,
+               reqRawHats[0].Rebindable && field.IsRebindable &&
+                   !field.IsRebindBlocked,
+               !directWritable});
+        }
+      }
       const bool insulated =
           fieldType && (fieldType->isPointer() || fieldType->isSmartPointer() ||
                         fieldType->isReference());
+      const bool rawDirectPointeeDeclared =
+          m_InUnsafeContext && access.Prefix.empty() && fieldType &&
+          fieldType->isRawPointer() && fieldType->getPointeeType() &&
+          fieldType->getPointeeType()->isRawPointer() &&
+          fieldType->getPointeeType()->IsWritable &&
+          !fieldType->getPointeeType()->IsBlocked;
       const bool declaredPayload =
-          field.IsValueMutable || field.Permission.SoulWritable;
+          field.IsValueMutable || field.Permission.SoulWritable ||
+          rawDirectPointeeDeclared;
       const bool blockedPayload =
           field.IsValueBlocked || field.Permission.SoulBlocked ||
           ((field.IsMorphicExempt || isWholeGenericField(declaration, field)) && insulated &&
@@ -4238,8 +4364,7 @@ bool Sema::collectActualReturnReferents(
         method->Args.empty() && method->ResolvedType &&
         method->ResolvedType->isRawPointer() && !method->ResolvedType->IsNullable &&
         method->Object && method->Object->ResolvedType &&
-        method->Object->ResolvedType->isRawPointer() &&
-        method->Object->ResolvedType->IsNullable)
+        method->Object->ResolvedType->isRawPointer())
       return visit(method->Object.get(), result);
     if (method || call) {
       auto *formal = method ? method->ResolvedFn : call->ResolvedFn;
@@ -7696,6 +7821,9 @@ ExplicitCedePlan Sema::recordExplicitCedeStage0NonCallPlan(
   if (bindingBehaviorPlan && normalSemaValidated && validatedActualType &&
       !validatedActualType->isUnknown())
     actualType = std::move(validatedActualType);
+  if (actualType && actualType->isNullType() && destinationType &&
+      destinationType->isRawPointer() && destinationType->IsNullable)
+    actualType = destinationType;
   if (bindingBehaviorPlan && normalSemaValidated &&
       dynamic_cast<NewExpr *>(stage0SurfaceSource(value)) && actualType &&
       destinationType && (actualType->isUniquePtr() || actualType->isSharedPtr()) &&
@@ -10797,7 +10925,7 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
               auto &Arg = Call->Args[i];
               Arg = foldGenericConstant(std::move(Arg)); // [FIX]
               m_LastBorrowSource.clear();
-              checkExpr(Arg.get());
+              auto argType = checkExpr(Arg.get());
               std::shared_ptr<Type> payloadType;
               if (!Memb.SubMembers.empty() && i < Memb.SubMembers.size())
                 payloadType = getPhysicalType(Memb.SubMembers[i]);
@@ -10810,6 +10938,11 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
                   qualifyAggregateTransfer(Arg.get(), payloadType);
               if (payloadType)
                 payloadType = resolveType(payloadType, false);
+              if (payloadType && payloadType->isRawPointer() &&
+                  isUnnarrowedBareNullableRawExpr(Arg.get())) {
+                error(Arg.get(), DiagID::ERR_MORPHOLOGY_MISMATCH,
+                      payloadType->IsNullable ? "?" : "*", "value");
+              }
               const bool payloadReceivesOwnedValue =
                   (payloadType && payloadType->requiresExplicitOwnershipTransfer(this)) ||
                   (Arg->ResolvedType && Arg->ResolvedType->requiresExplicitOwnershipTransfer(this));
@@ -13996,6 +14129,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       if (paramIsHatted) {
         paramIsRebindable = paramType->IsWritable;
         auto pointee = paramType->getPointeeType();
+        while (pointee && (pointee->isPointer() || pointee->isSmartPointer() ||
+                           pointee->isReference()))
+          pointee = pointee->getPointeeType();
         paramIsValueMutable = pointee && pointee->IsWritable;
       } else {
         paramIsValueMutable = paramType->IsWritable;
@@ -14116,6 +14252,9 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         (!abstractWholeFormal && paramIsHatted && paramType && !paramType->isUnknown() &&
          [](const std::shared_ptr<Type> &type) {
            auto pointee = type->getPointeeType();
+           while (pointee && (pointee->isPointer() || pointee->isSmartPointer() ||
+                              pointee->isReference()))
+             pointee = pointee->getPointeeType();
            return pointee && pointee->IsWritable;
          }(paramType));
     bool lacksHandleCapability =
@@ -14401,10 +14540,15 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
       // concrete type-mismatch diagnostic used by the common-mistake guide.
       if (!morphologyValid && targetMorph == MorphKind::None)
         morphologyValid = true;
+    } else if (paramType && paramType->isRawPointer() &&
+               isUnnarrowedBareNullableRawExpr(Call->Args[i].get())) {
+      error(Call->Args[i].get(), DiagID::ERR_MORPHOLOGY_MISMATCH,
+            paramType->IsNullable ? "?" : "*", "value");
+      morphologyValid = false;
     }
 
     bool diagnosedNull = false;
-    if (!m_InUnsafeContext && paramType && paramType->isRawPointer() &&
+    if (paramType && paramType->isRawPointer() &&
         !paramType->IsNullable && argType && argType->isNullType()) {
       error(Call->Args[i].get(), DiagID::ERR_NONZERO_RAW_NULL_FLOW,
             paramType->toString());
@@ -14439,9 +14583,14 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         }
       }
     }
+    const bool rebindableRawOuterNullMismatch =
+        paramIsHatted && paramIsRebindable && paramType && argType &&
+        paramType->isRawPointer() && argType->isRawPointer() &&
+        paramType->IsNullable != argType->IsNullable;
     const bool legacyTypeMismatch =
         morphologyValid && !diagnosedNull && !consumingFunctionToDyn &&
-        !isTypeCompatible(paramType, argType);
+        (!isTypeCompatible(paramType, argType) ||
+         rebindableRawOuterNullMismatch);
     if (d3ObservationInput && i == 0)
       d3LegacyTypeMismatch = legacyTypeMismatch;
     if (legacyTypeMismatch) {
@@ -14455,7 +14604,30 @@ std::shared_ptr<toka::Type> Sema::checkCallExpr(CallExpr *Call) {
         Call->Args[i]->ResolvedType = paramType;
       }
     }
+
+    // [v0.20 Raw Pointer Hat Unification] Class 3 NonZeroFact invalidation
+    {
+      Expr *argScan = Call->Args[i].get();
+      while (auto *C = dynamic_cast<CastExpr *>(argScan))
+        argScan = C->Expression.get();
+      bool argRequestsSlotMutation = paramIsRebindable || paramIsValueMutable;
+      while (auto *U = dynamic_cast<UnaryExpr *>(argScan)) {
+        if (U->IsRebindable || U->IsValueMutable)
+          argRequestsSlotMutation = true;
+        argScan = U->RHS.get();
+      }
+      if (auto *M = dynamic_cast<MemberExpr *>(argScan)) {
+        if (M->Member.find('#') != std::string::npos)
+          argRequestsSlotMutation = true;
+      }
+      if (argRequestsSlotMutation) {
+        std::string argPathStr = getPathString(Call->Args[i].get());
+        if (!argPathStr.empty())
+          invalidateNonZeroFactForPath(argPathStr);
+      }
+    }
   }
+  invalidateAliasedNonZeroFacts();
 
   auto finalizeD3Observation = [&]() {
     if (!d3ObservationInput)

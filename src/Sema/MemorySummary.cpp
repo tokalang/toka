@@ -433,8 +433,10 @@ private:
           lhsVarName = variable->Name;
         } else if (auto *unary =
                        dynamic_cast<const UnaryExpr *>(binary->LHS.get())) {
-          if (auto *varInUnary =
-                  dynamic_cast<const VariableExpr *>(unary->RHS.get())) {
+          const Expr *inner = unary->RHS.get();
+          while (auto *innerU = dynamic_cast<const UnaryExpr *>(inner))
+            inner = innerU->RHS.get();
+          if (auto *varInUnary = dynamic_cast<const VariableExpr *>(inner)) {
             lhsVarName = varInUnary->Name;
           }
         }
@@ -578,6 +580,9 @@ private:
     }
     if (auto *value = dynamic_cast<const ForExpr *>(expr)) {
       visitExpr(value->Collection.get());
+      std::string stripped = Type::stripMorphology(value->VarName);
+      if (!stripped.empty() && stripped != "_")
+        Aliases[stripped].insert(stripped);
       mergeAlias(value->VarName, roots(value->Collection.get()));
       visitStmt(value->Body.get());
       visitStmt(value->ElseBody.get());
@@ -587,7 +592,9 @@ private:
     }
     if (auto *value = dynamic_cast<const MatchExpr *>(expr)) {
       visitExpr(value->Target.get());
+      RootSet targetRoots = roots(value->Target.get());
       for (const auto &arm : value->Arms) {
+        registerPatternAliases(arm->Pat.get(), targetRoots);
         visitExpr(arm->Guard.get());
         visitStmt(arm->Body.get());
       }
@@ -683,10 +690,27 @@ private:
                    bit(MemoryRootEffect::Unknown));
     } else if (auto *value = dynamic_cast<const GuardBindStmt *>(stmt)) {
       visitExpr(value->Target.get());
+      registerPatternAliases(value->Pat.get(), roots(value->Target.get()));
       visitStmt(value->ElseBody.get());
     } else if (auto *expr = dynamic_cast<const Expr *>(stmt)) {
       visitExpr(expr);
     }
+  }
+
+  void registerPatternAliases(const MatchArm::Pattern *pat,
+                              const RootSet &targetRoots) {
+    if (!pat)
+      return;
+    if (pat->PatternKind == MatchArm::Pattern::Variable &&
+        pat->Binding == MatchArm::Pattern::BindingOrigin::Fresh) {
+      std::string stripped = Type::stripMorphology(pat->Name);
+      if (!stripped.empty() && stripped != "_") {
+        Aliases[stripped].insert(stripped);
+        mergeAlias(pat->Name, targetRoots);
+      }
+    }
+    for (const auto &sub : pat->SubPatterns)
+      registerPatternAliases(sub.get(), targetRoots);
   }
 };
 

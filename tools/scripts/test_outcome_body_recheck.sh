@@ -20,7 +20,7 @@ import sys
 path = Path(sys.argv[1])
 header, body = path.read_bytes().split(b"\n\n", 1)
 digest = 14695981039346656037
-for byte in b"// @encap_epoch 0.19\n" + body:
+for byte in b"// @language_epoch 0.20\n// @encap_epoch 0.19\n" + body:
     digest = ((digest ^ byte) * 1099511628211) & ((1 << 64) - 1)
 header, count = re.subn(
     rb"(?m)^// @meta replay_surface_hash: [0-9a-f]{16}$",

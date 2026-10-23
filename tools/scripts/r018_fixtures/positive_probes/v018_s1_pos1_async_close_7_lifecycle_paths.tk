@@ -163,7 +163,7 @@ fn run_all_7_paths() -> async i32 {
     {
         auto s6 = SessionA(res_guard = make_guard(60:i32), mode = 3:i32, base = 77:i32)
         auto task6 = s6.close()
-        auto nul *tcb6 = task_get_coro_handle<Result<i32, CloseError>>(task6)
+        auto ?tcb6 = task_get_coro_handle<Result<i32, CloseError>>(task6)
         auto *live_tcb6 = tcb6.unwrap()
         toka_task_start(*live_tcb6)
         auto waited6# = 0:i32

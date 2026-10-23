@@ -63,27 +63,28 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
     }
   }
 
-  // 2. 重绑定去重 (Rebind Suffix/Prefix Uniqueness)
-  int hashCount = 0;
-  for (char c : Memb->Member) {
-    if (c == '#') {
-      hashCount++;
-    }
-  }
-  if (hashCount > 1) {
-    hasInvalidMix = true;
-  }
-
-  // 3. 顺序与连续性合法性 (Prefix Ordering & Hats Adjacency)
-  bool seenHash = false;
+  // 2 & 3. 顺序与每层重绑定标记合法性 (Prefix Ordering & Per-Hat '#' Uniqueness)
+  bool seenHat = false;
+  bool lastHatHadHash = false;
   for (char c : intent.Prefix) {
-    if (c == '#') {
-      seenHash = true;
-    } else if (isMemberAccessHatChar(c)) {
-      if (seenHash) {
-        hasInvalidMix = true; // Hat after Hash is invalid
+    if (isMemberAccessHatChar(c)) {
+      seenHat = true;
+      lastHatHadHash = false;
+    } else if (c == '#') {
+      if (!seenHat || lastHatHadHash) {
+        hasInvalidMix = true;
       }
+      lastHatHadHash = true;
     }
+  }
+  int suffixHashCount = 0;
+  for (size_t idx = intent.Prefix.size(); idx < Memb->Member.size(); ++idx) {
+    if (Memb->Member[idx] == '#') {
+      suffixHashCount++;
+    }
+  }
+  if (suffixHashCount > 1 || (suffixHashCount > 0 && intent.HasRebindMarker)) {
+    hasInvalidMix = true;
   }
 
   // 5. Morphic Identity 排他性 (Morphic Identity Exclusivity)
@@ -100,7 +101,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   }
 
   std::string path = getPathString(Memb);
-  bool isNarrowed = m_NarrowedPaths.count(path);
+  bool isNarrowed = hasActiveNonZeroFact(path);
   bool memberAccessHadConflict = false;
 
   // [Ch 5] Single Hat Principle & Terminal Marking Trace
@@ -265,18 +266,31 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   //           << " IsNullable=" << objTypeObj->IsNullable
   //           << " isNarrowed=" << isNarrowed << "\n";
 
-  // [Ch 6.2] LHS Write Exemption
-  bool isLHSTarget = m_InLHS && m_IsAssignmentTarget;
-  if (objTypeObj->IsNullable && !isLHSTarget) {
+  // [0.20 Fix R-1 & R3-M4] Never exempt LHS member access on an unnarrowed
+  // nullable raw pointer base: both RHS and LHS dereference require non-null
+  // proof. Moreover, '.' on a raw pointer base peels at most ONE raw pointer
+  // layer; multi-layer raw pointers (*?p, ??p, **p) cannot implicitly peel
+  // multiple layers to reach a struct soul.
+  if (objTypeObj->IsNullable) {
     DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_MAY_ZERO_RAW_ACCESS,
                              objTypeObj->toString());
     HasError = true;
-  }
-
-  // [Ch 5.5] Implicit Dereference for soul access
-  // If Object is a pointer but we use '.', we must treat it as
-  // accessing the soul. Exception: Identity properties or methods.
-  if (objTypeObj->isPointer() || objTypeObj->isSmartPointer()) {
+    objTypeObj = objTypeObj->getSoulType();
+  } else if (objTypeObj->isRawPointer()) {
+    objTypeObj = objTypeObj->getPointeeType();
+    if (objTypeObj && objTypeObj->isRawPointer()) {
+      if (objTypeObj->IsNullable) {
+        DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_MAY_ZERO_RAW_ACCESS,
+                                 objTypeObj->toString());
+        HasError = true;
+        objTypeObj = objTypeObj->getSoulType();
+      } else {
+        error(Memb, DiagID::ERR_NOT_A_STRUCT, Memb->Member,
+              objTypeObj->toString());
+        return toka::Type::fromString("unknown");
+      }
+    }
+  } else if (objTypeObj->isPointer() || objTypeObj->isSmartPointer()) {
     objTypeObj = objTypeObj->getSoulType();
   }
 
@@ -319,9 +333,8 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
     std::string requestedPrefix = access.Prefix;
     bool requestedMorphicIdentity = access.IsMorphicIdentity;
 
-    // [Ch 5] Single Hat & Terminal Audit: Except for ?? assertion
-    if (m_InIntermediatePath && !requestedPrefix.empty() &&
-        requestedPrefix != "??") {
+    // [Ch 5] Single Hat & Terminal Audit
+    if (m_InIntermediatePath && !requestedPrefix.empty()) {
       error(Memb, DiagID::ERR_SEMA_POINTER_MORPHOLOGY_AND_PERMISSION_SYMBOLS, requestedPrefix);
     }
 
@@ -444,7 +457,7 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
 
         if (!m_InLHS && !m_InIntermediatePath && !path.empty() &&
             requestedPrefix.find('&') != std::string::npos &&
-            requestedPrefix != "??" && !memberAccessHadConflict) {
+            !memberAccessHadConflict) {
           bool isExclusive = access.HasRebindMarker || m_ExpectedWritability;
           if (!PALCheckerState.recordBorrow(
                   canonicalizeAccessPath(makeAccessPath(Memb)), isExclusive,
@@ -464,9 +477,34 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
 
         if (requestedPrefix.empty() && !requestedMorphicIdentity &&
             !m_DisableSoulCollapse) {
-          // obj.field (Hat-Off) -> Soul Collapse.
+          // obj.field (Hat-Off) -> 1-layer Direct Pointee Projection for raw pointers,
+          // or Soul Collapse for managed/reference/value fields.
           bool finalSoulBlocked =
               Field.IsValueBlocked || (isSoulInsulated && !Field.IsValueMutable);
+          if (fieldType && fieldType->isRawPointer()) {
+            bool outerNullable = fieldType->IsNullable && !isNarrowed;
+            if (outerNullable) {
+              return fieldType->withAttributes(false, true, fieldType->IsBlocked);
+            }
+            auto directPointee = fieldType->getPointeeType();
+            if (directPointee && directPointee->isRawPointer()) {
+              bool layer1Writable =
+                  m_InUnsafeContext && directPointee->IsWritable &&
+                  !directPointee->IsBlocked;
+              return directPointee->withAttributes(
+                  layer1Writable, directPointee->IsNullable,
+                  directPointee->IsBlocked);
+            }
+            if (directPointee) {
+              auto collapsed = directPointee->withAttributes(
+                  m_InUnsafeContext && finalSoulWritable,
+                  directPointee->IsNullable, finalSoulBlocked);
+              if (!isBorrowLikeType(collapsed)) {
+                m_LastFieldDependencies.clear();
+              }
+              return collapsed;
+            }
+          }
           auto collapsed = fieldType->getSoulType()->withAttributes(
               finalSoulWritable, isNarrowed ? false : fieldType->IsNullable,
               finalSoulBlocked);
@@ -492,15 +530,142 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
           bool intentWritable =
               requestedPrefix.find('#') != std::string::npos ||
               requestedPrefix.find('!') != std::string::npos;
-          bool intentNullable = false;
-          if (requestedPrefix != "??") {
-            intentNullable = requestedPrefix.find('?') != std::string::npos ||
-                             requestedPrefix.find('!') != std::string::npos;
+          bool intentNullable =
+              requestedPrefix.find('?') != std::string::npos ||
+              requestedPrefix.find('!') != std::string::npos;
+
+          struct ReqRawHat {
+            bool HasNull = false;
+            bool IsRebindable = false;
+          };
+          std::vector<ReqRawHat> reqRawHats;
+          bool onlyRawHats = !requestedPrefix.empty();
+          for (size_t hi = 0; hi < requestedPrefix.size(); ++hi) {
+            char c = requestedPrefix[hi];
+            if (c == '*' || c == '?') {
+              bool reb = (hi + 1 < requestedPrefix.size() &&
+                          requestedPrefix[hi + 1] == '#');
+              if (reb)
+                ++hi;
+              reqRawHats.push_back({c == '?', reb});
+            } else if (c == '#' || c == '$') {
+              continue;
+            } else {
+              onlyRawHats = false;
+            }
+          }
+
+          if (onlyRawHats && !reqRawHats.empty()) {
+            std::vector<std::shared_ptr<toka::RawPointerType>> declaredRawLayers;
+            std::shared_ptr<toka::Type> rawSoul = fieldType;
+            const size_t maxDeclaredLayers =
+                (SD && SD->InstantiationTemplate &&
+                 !Field.Permission.HandleLayers.empty())
+                    ? Field.Permission.HandleLayers.size()
+                    : std::numeric_limits<size_t>::max();
+            while (rawSoul && rawSoul->isRawPointer() &&
+                   declaredRawLayers.size() < maxDeclaredLayers) {
+              declaredRawLayers.push_back(
+                  std::static_pointer_cast<toka::RawPointerType>(rawSoul));
+              rawSoul = rawSoul->getPointeeType();
+            }
+            const size_t D = declaredRawLayers.size();
+            const size_t K = reqRawHats.size();
+            auto buildExpectedHats = [&]() {
+              std::string s;
+              for (const auto &l : declaredRawLayers)
+                s += l->IsNullable ? "?" : "*";
+              return s;
+            };
+            auto buildProvidedHats = [&]() {
+              std::string s;
+              for (const auto &h : reqRawHats)
+                s += h.HasNull ? "?" : "*";
+              return s;
+            };
+
+            bool finalHandleWritable = false;
+            if (Field.IsRebindBlocked) {
+              finalHandleWritable = false;
+            } else if (reqRawHats[0].IsRebindable || intentWritable) {
+              finalHandleWritable = objTypeObj->IsWritable || Field.IsRebindable;
+            } else if (Field.IsRebindable) {
+              finalHandleWritable = result->IsWritable;
+            } else {
+              finalHandleWritable = objTypeObj->IsWritable;
+            }
+
+            if (D == 0) {
+              if (K != 1 || reqRawHats[0].HasNull) {
+                error(Memb, DiagID::ERR_MORPHOLOGY_MISMATCH, "*",
+                      buildProvidedHats());
+              }
+              auto addrRes = std::make_shared<RawPointerType>(fieldType);
+              addrRes->IsWritable = finalHandleWritable;
+              addrRes->IsNullable = false;
+              return addrRes;
+            }
+            if (K == D) {
+              bool mismatch = false;
+              for (size_t j = 0; j < D; ++j) {
+                if (reqRawHats[j].HasNull != declaredRawLayers[j]->IsNullable) {
+                  mismatch = true;
+                  break;
+                }
+              }
+              if (mismatch) {
+                error(Memb, DiagID::ERR_MORPHOLOGY_MISMATCH, buildExpectedHats(),
+                      buildProvidedHats());
+              }
+              for (size_t j = 1; j < D; ++j) {
+                if (!m_InLHS && reqRawHats[j].IsRebindable &&
+                    !declaredRawLayers[j]->IsWritable) {
+                  error(Memb,
+                        DiagID::ERR_SEMA_COVENANT_VIOLATION_CANNOT_ELEVATE_WRITE_P);
+                }
+              }
+              bool outerNull =
+                  declaredRawLayers[0]->IsNullable &&
+                  !(isNarrowed && !m_InLHS && !m_IsAssignmentTarget &&
+                    !reqRawHats[0].IsRebindable);
+              return result->withAttributes(finalHandleWritable, outerNull);
+            }
+            if (K == D + 1) {
+              bool mismatch = reqRawHats[0].HasNull;
+              for (size_t j = 0; j < D && !mismatch; ++j) {
+                if (reqRawHats[j + 1].HasNull !=
+                    declaredRawLayers[j]->IsNullable) {
+                  mismatch = true;
+                }
+              }
+              if (mismatch) {
+                error(Memb, DiagID::ERR_MORPHOLOGY_MISMATCH,
+                      "*" + buildExpectedHats(), buildProvidedHats());
+              }
+              if (!path.empty() && finalHandleWritable) {
+                m_MutableAliasedPaths.insert(path);
+              }
+              if (finalHandleWritable) {
+                std::string mp = getPathString(Memb);
+                if (!mp.empty())
+                  m_MutableAliasedPaths.insert(mp);
+              }
+              auto innerSlot = result->withAttributes(
+                  finalHandleWritable, declaredRawLayers[0]->IsNullable);
+              auto addrRes = std::make_shared<RawPointerType>(innerSlot);
+              addrRes->IsWritable = reqRawHats[0].IsRebindable;
+              addrRes->IsNullable = false;
+              return addrRes;
+            }
+            error(Memb, DiagID::ERR_MORPHOLOGY_MISMATCH, buildExpectedHats(),
+                  buildProvidedHats());
+            return result->withAttributes(finalHandleWritable,
+                                          declaredRawLayers[0]->IsNullable);
           }
 
           // If requested prefix exists, ensure morphology matches or
           // wrap it
-          if (!requestedPrefix.empty() && requestedPrefix != "??") {
+          if (!requestedPrefix.empty()) {
             std::string baseMorph =
                 toka::Type::stripMorphology(requestedPrefix);
             // If requestedPrefix was just attributes (like '??' or
@@ -553,14 +718,6 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
             }
           }
 
-          if (requestedPrefix == "??") {
-            // Identity Assertion (Ch 6.1)
-            if (!fieldType->isPointer() && !fieldType->isSmartPointer()) {
-              error(Memb, DiagID::ERR_SEMA_IDENTITY_ASSERTION_CAN_ONLY_BE_APPLIED_TO, fieldType->toString());
-            }
-            result = fieldType->withAttributes(fieldType->IsWritable, false);
-          }
-
           // 2. Determine Handle Writability
           bool finalHandleWritable = false;
           if (Field.IsRebindBlocked) {
@@ -576,8 +733,13 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
             finalHandleWritable = objTypeObj->IsWritable;
           }
 
-          return result->withAttributes(
-              finalHandleWritable, intentNullable ? true : result->IsNullable);
+          bool finalNullable =
+              intentNullable
+                  ? true
+                  : (result->IsNullable &&
+                     !(result->isRawPointer() && isNarrowed &&
+                       (!m_InLHS || !m_IsAssignmentTarget || m_IsMemberBase)));
+          return result->withAttributes(finalHandleWritable, finalNullable);
         }
       }
     }
@@ -619,6 +781,11 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
     std::string actualName = Var->Name;
     if (CurrentScope->findVariableWithDeref(Var->Name, Info, actualName)) {
       baseType = Info->TypeObj;
+      if (baseType && baseType->isRawPointer() && baseType->IsNullable &&
+          hasActiveNonZeroFact(actualName)) {
+        baseType = baseType->withAttributes(baseType->IsWritable, false,
+                                            baseType->IsBlocked);
+      }
       Var->GenericContract = Info->GenericContract;
       Var->IsAbstractWholeValue = Info->IsAbstractWholeValue;
       Var->ResolvedType = baseType;
@@ -665,7 +832,10 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
   } else {
     bool old = m_DisableSoulCollapse;
     m_DisableSoulCollapse = true;
+    bool oldMemberBase = m_IsMemberBase;
+    m_IsMemberBase = true;
     baseType = checkExpr(Idx->Array.get());
+    m_IsMemberBase = oldMemberBase;
     m_DisableSoulCollapse = old;
   }
 
@@ -724,9 +894,29 @@ std::shared_ptr<toka::Type> Sema::checkIndexExpr(ArrayIndexExpr *Idx) {
       resultType = baseType;
     } else {
       // [Default] Soul Indexing (Value Access)
+      bool reportedRawNullIndex = false;
+      if (baseType->isRawPointer() && baseType->IsNullable) {
+        DiagnosticEngine::report(getLoc(Idx), DiagID::ERR_MAY_ZERO_RAW_ACCESS,
+                                 baseType->toString());
+        HasError = true;
+        reportedRawNullIndex = true;
+      }
       auto pointee = baseType->getPointeeType();
       if (pointee) {
         auto resolvedPointee = resolveType(pointee, true);
+        if (baseType->isRawPointer() && resolvedPointee &&
+            resolvedPointee->isRawPointer()) {
+          if (!reportedRawNullIndex && resolvedPointee->IsNullable) {
+            DiagnosticEngine::report(getLoc(Idx),
+                                     DiagID::ERR_MAY_ZERO_RAW_ACCESS,
+                                     resolvedPointee->toString());
+            HasError = true;
+            reportedRawNullIndex = true;
+          }
+          if (reportedRawNullIndex) {
+            resolvedPointee = resolveType(resolvedPointee->getSoulType(), true);
+          }
+        }
         // A pointer handle's # is identity-only.  The indexed payload may
         // inherit only the pointee/slice/element payload permission.
         bool payloadWritable = resolvedPointee->IsWritable;

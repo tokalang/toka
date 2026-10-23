@@ -63,13 +63,13 @@ impl Lexer {
     fn peek(self) -> char {
         auto u_pos = self.pos as usize
         if u_pos >= self.source.len() { return '\0' }
-        return self.source.at(u_pos).unwrap() as char
+        return self.source.byte_at(u_pos)
     }
 
     fn advance(self#) -> char {
         auto u_pos = self.pos as usize
         if u_pos >= self.source.len() { return '\0' }
-        auto c = self.source.at(u_pos).unwrap() as char
+        auto c = self.source.byte_at(u_pos)
         self.pos = self.pos + 1
         if c == '\n' { // '\n'
             self.line = self.line + 1
@@ -84,7 +84,7 @@ impl Lexer {
         auto next_pos = self.pos + 1
         auto u_next_pos = next_pos as usize
         if u_next_pos >= self.source.len() { return '\0' }
-        return self.source.at(u_next_pos).unwrap() as char
+        return self.source.byte_at(u_next_pos)
     }
 
     fn is_alpha(c: char) -> bool {
@@ -120,7 +120,7 @@ impl Lexer {
             loop Lexer::is_whitespace(self.peek()) {
                 self#.advance()
             }
-            auto ws = self.source.substring(start_idx as usize, self.pos as usize)
+            auto ws = self.source.substr(start_idx as usize, (self.pos - start_idx) as usize)
             auto result = Token::new(TokenKind::Whitespace(), ws, start_line, start_col)
             return cede result
         }
@@ -138,7 +138,7 @@ impl Lexer {
                 }
                 self#.advance()
             }
-            auto comm = self.source.substring(start_idx as usize, self.pos as usize)
+            auto comm = self.source.substr(start_idx as usize, (self.pos - start_idx) as usize)
             auto result = Token::new(TokenKind::Comment(), comm, start_line, start_col)
             return cede result
         }
@@ -149,7 +149,7 @@ impl Lexer {
             loop self.peek() != '\0' && self.peek() != '\n' {
                 self#.advance()
             }
-            auto comm = self.source.substring(start_idx as usize, self.pos as usize)
+            auto comm = self.source.substr(start_idx as usize, (self.pos - start_idx) as usize)
             auto result = Token::new(TokenKind::Comment(), comm, start_line, start_col)
             return cede result
         }
@@ -160,11 +160,11 @@ impl Lexer {
             loop Lexer::is_alpha(self.peek()) || Lexer::is_digit(self.peek()) || self.peek() == '@' { // '@' for macros
                 self#.advance()
             }
-            auto ident = self.source.substring(start_idx as usize, self.pos as usize)
+            auto ident = self.source.substr(start_idx as usize, (self.pos - start_idx) as usize)
             auto kind# = TokenKind::Identifier()
             // In a full formatter we'd check against a list of keywords here.
             // For now, simple keywords match
-            if ident.equals("fn") || ident.equals("return") || ident.equals("auto") || ident.equals("shape") || ident.equals("impl") || ident.equals("pub") || ident.equals("pkg") || ident.equals("nul") {
+            if ident.equals("fn") || ident.equals("return") || ident.equals("auto") || ident.equals("shape") || ident.equals("impl") || ident.equals("pub") || ident.equals("pkg") {
                 kind = TokenKind::Keyword()
             }
             auto result = Token::new(kind, ident, start_line, start_col)
@@ -185,7 +185,7 @@ impl Lexer {
                     self#.advance()
                 }
             }
-            auto num = self.source.substring(start_idx as usize, self.pos as usize)
+            auto num = self.source.substr(start_idx as usize, (self.pos - start_idx) as usize)
             auto result = Token::new(TokenKind::Number(), num, start_line, start_col)
             return cede result
         }
@@ -203,7 +203,7 @@ impl Lexer {
             if self.peek() == '"' {
                 self#.advance() // Consume closing quote
             }
-            auto str_val = self.source.substring(start_idx as usize, self.pos as usize)
+            auto str_val = self.source.substr(start_idx as usize, (self.pos - start_idx) as usize)
             auto result = Token::new(TokenKind::StringLit(), str_val, start_line, start_col)
             return cede result
         }
@@ -219,7 +219,7 @@ impl Lexer {
             if self.peek() == '\'' {
                 self#.advance()
             }
-            auto str_val2 = self.source.substring(start_idx as usize, self.pos as usize)
+            auto str_val2 = self.source.substr(start_idx as usize, (self.pos - start_idx) as usize)
             auto result = Token::new(TokenKind::CharLit(), str_val2, start_line, start_col)
             return cede result
         }
@@ -228,7 +228,7 @@ impl Lexer {
         if c == '{' || c == '}' || c == '(' || c == ')' || c == '[' || c == ']' || c == ';' {
             auto start_idx = self.pos
             self#.advance()
-            auto delim_str = self.source.substring(start_idx as usize, self.pos as usize)
+            auto delim_str = self.source.substr(start_idx as usize, (self.pos - start_idx) as usize)
             auto result = Token::new(TokenKind::Delimiter(), delim_str, start_line, start_col)
             return cede result
         }
@@ -253,7 +253,7 @@ impl Lexer {
         } else {
             self#.advance()
         }
-        auto op = self.source.substring(start_idx_op as usize, self.pos as usize)
+        auto op = self.source.substr(start_idx_op as usize, (self.pos - start_idx_op) as usize)
         auto result = Token::new(TokenKind::Operator(), op, start_line, start_col)
         return cede result
     }
@@ -318,7 +318,7 @@ impl Printer {
                 auto nl_count# = 0
                 auto i# = 0 as usize
                 loop i < t.lexeme.len() {
-                    if t.lexeme.at(i).unwrap() as char == '\n' {
+                    if t.lexeme.byte_at(i) == '\n' {
                         nl_count = nl_count + 1
                     }
                     i = i + 1
@@ -340,13 +340,15 @@ impl Printer {
             
             // Space collapsing for { and else
             if t.kind == TokenKind::Delimiter() && t.lexeme.equals("{") {
-                if !is_namespace_brace {
+                if !is_namespace_brace && last_kind != TokenKind::Comment() {
                     pending_nl_count = 0
                     pending_space = true
                 }
             } else if t.kind == TokenKind::Keyword() && t.lexeme.equals("else") {
-                pending_nl_count = 0
-                pending_space = true
+                if last_kind != TokenKind::Comment() {
+                    pending_nl_count = 0
+                    pending_space = true
+                }
             }
             
             // Adjust indent on closing brace/paren BEFORE printing
@@ -441,7 +443,10 @@ impl Printer {
             // Consume pending space
             if pending_space && !self.needs_indent {
                 auto should_space# = true
-                if t.lexeme.equals(",") || t.lexeme.equals(";") || t.lexeme.equals(":") || t.lexeme.equals(")") || t.lexeme.equals("]") || t.lexeme.equals("#") {
+                if t.lexeme.equals(",") || t.lexeme.equals(";") || t.lexeme.equals(":") || t.lexeme.equals(")") || t.lexeme.equals("]") || t.lexeme.equals("#") || t.lexeme.equals("$") {
+                    should_space = false
+                }
+                if t.lexeme.equals("?") && last_lexeme.equals("await") {
                     should_space = false
                 }
                 if t.lexeme.equals("::") {
@@ -450,8 +455,8 @@ impl Printer {
                 if last_lexeme.equals("(") || last_lexeme.equals("[") || last_lexeme.equals("::") {
                     should_space = false
                 }
-                if last_kind == TokenKind::Operator() && !last_was_binary_op {
-                    if last_lexeme.equals("*") || last_lexeme.equals("-") || last_lexeme.equals("&") || last_lexeme.equals("~") || last_lexeme.equals("^") {
+                if last_kind == TokenKind::Operator() && !last_was_binary_op && t.kind != TokenKind::Comment() && !t.lexeme.equals("{") {
+                    if last_lexeme.equals("*") || last_lexeme.equals("?") || last_lexeme.equals("-") || last_lexeme.equals("&") || last_lexeme.equals("~") || last_lexeme.equals("^") {
                         should_space = false
                     }
                 }

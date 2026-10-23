@@ -181,7 +181,7 @@ fn coordinator() -> async i32 {
 
     {
         auto task3 = s#.read(cede b3)
-        auto nul *tcb3 = task_get_coro_handle<Result<AsyncReadResult, AsyncIoError>>(task3)
+        auto ?tcb3 = task_get_coro_handle<Result<AsyncReadResult, AsyncIoError>>(task3)
         auto *live_tcb3 = tcb3.unwrap()
         toka_task_start(*live_tcb3)
 
@@ -233,7 +233,7 @@ fn coordinator() -> async i32 {
 
     {
         auto task4 = s#.read(cede b4)
-        auto nul *tcb4 = task_get_coro_handle<Result<AsyncReadResult, AsyncIoError>>(task4)
+        auto ?tcb4 = task_get_coro_handle<Result<AsyncReadResult, AsyncIoError>>(task4)
         auto *live_tcb4 = tcb4.unwrap()
         toka_task_start(*live_tcb4)
 

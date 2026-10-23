@@ -18,8 +18,8 @@ pub fn args_impl() -> i32 {
 // Retrieves a specific command-line argument by index.
 pub fn get_arg_impl(index: i32) -> string {
     unsafe {
-        auto nul *ptr = toka_wasi_argv(index)
-        if *ptr == null {
+        auto ?ptr = toka_wasi_argv(index)
+        if ?ptr == null {
             return string::from("")
         }
         auto *live_ptr = ptr.unwrap()
@@ -49,13 +49,13 @@ pub fn chdir_impl(path: Addr) -> bool {
 
 pub fn getenv_impl(name: string) -> Option<string> {
     unsafe {
-        auto nul *val = libc_getenv(name.c_str())
+        auto ?val = libc_getenv(name.c_str())
         
-        if *val == null {
+        if ?val == null {
             return Option<string>::None
         }
         
-        return Option<string>::Some(string::from_cstr(*val))
+        return Option<string>::Some(string::from_cstr(?val))
     }
 }
 

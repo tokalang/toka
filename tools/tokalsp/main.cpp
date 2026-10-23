@@ -314,7 +314,10 @@ private:
   std::vector<std::string> SearchPaths;
   std::vector<std::string> TrustedSystemRoots;
   const std::string ToolchainNodeId =
-      std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION;
+      std::string("toolchain-v1-") + TOKA_COMPILER_INTERFACE_VERSION +
+      "-fmt" + TOKA_INTERFACE_FORMAT_VERSION +
+      "-lang" + toka::getActiveLanguageEpoch() +
+      "-encap" + toka::getActiveEncapEpoch();
   std::string RootUri;
   std::string Formatter;
   bool ShutdownRequested = false;

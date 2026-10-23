@@ -4,8 +4,9 @@ extern fn run_raw_probe() -> i32
 pub fn raw_probe(*key: [*i32], *val: i32) -> i32 {
     auto entry = unsafe Entry<*i32, i32>(*key = (*key as **i32), *val = *val)
     auto **k = entry.key()
+    auto *k_val = k
     auto *v = entry.val()
-    if k != 5 || v != 9 { return 1 }
+    if k_val != 5 || v != 9 { return 1 }
     auto meta# = Vec<u8>::new()
     meta#.push(1)
     {
@@ -15,8 +16,9 @@ pub fn raw_probe(*key: [*i32], *val: i32) -> i32 {
         auto result = cursor#.next()
         auto item = result.unwrap()
         auto **raw = item.key()
+        auto *raw_val = raw
         auto *plain = item.val()
-        if raw != 5 || plain != 9 { return 3 }
+        if raw_val != 5 || plain != 9 { return 3 }
         if cursor#.next().is_some() { return 4 }
     }
     {
@@ -27,7 +29,8 @@ pub fn raw_probe(*key: [*i32], *val: i32) -> i32 {
         auto item = result.unwrap()
         auto *plain = item.key()
         auto **raw = item.val()
-        if raw != 5 || plain != 9 { return 5 }
+        auto *raw_val = raw
+        if raw_val != 5 || plain != 9 { return 5 }
     }
     return 0
 }

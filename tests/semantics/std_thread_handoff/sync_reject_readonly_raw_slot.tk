@@ -1,8 +1,8 @@
 shape Token(value: i32)
 shape View<T>(&data#: T)
-fn readonly_slot(nul *storage: [^Token]) -> View<^Token> <- storage {
+fn readonly_slot(?storage: [^Token]) -> View<^Token> <- storage {
     unsafe {
-        if *storage is null { unreachable }
+        if ?storage is null { unreachable }
         return View<^Token>(&data = &(storage[0]))
     }
 }

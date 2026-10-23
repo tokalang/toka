@@ -1166,9 +1166,9 @@ fn run_build_impl(
         }
 
         if is_hybrid {
-            auto nul *env_cxx = libc_getenv(c"CXX")
+            auto ?env_cxx = libc_getenv(c"CXX")
             auto cxx# = string::from("")
-            if *env_cxx != null {
+            if ?env_cxx != null {
                 auto *live_env_cxx = env_cxx.unwrap()
                 cxx = string::from_cstr(*live_env_cxx)
             } else {

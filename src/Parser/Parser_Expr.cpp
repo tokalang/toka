@@ -59,59 +59,120 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern(bool inheritedFres
   bool isPtrNullable = false;
   bool isRebindable = false;
   bool isRebindBlocked = false;
+  bool pendingNul = false;
+  Token nulTok;
+  std::vector<HandleLayer> handleLayers;
   bool hasAutoBinding = match(TokenType::KwAuto);
   const bool introducesFresh = inheritedFresh || hasAutoBinding;
 
   std::string morphologyPrefix = "";
   while (true) {
+    if (match(TokenType::KwNul)) {
+      pendingNul = true;
+      nulTok = previous();
+      isPtrNullable = true;
+      continue;
+    }
     if (match(TokenType::Ampersand)) {
       isRef = true;
       morphologyPrefix += "&";
       Token tok = previous();
       isRebindable = tok.IsSwappablePtr;
-      isPtrNullable = isPtrNullable || tok.HasNull;
+      isPtrNullable = isPtrNullable || pendingNul || tok.HasNull;
       isRebindBlocked = tok.IsBlocked;
-      if (isPtrNullable) {
-        error(tok, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+      handleLayers.push_back({BindingMorphology::Reference, tok.IsSwappablePtr,
+                              pendingNul || tok.HasNull, tok.IsBlocked});
+      if (pendingNul || tok.HasNull) {
+        HasError = true;
+        DiagnosticEngine::report(
+            tok.Loc, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
       }
       if (match(TokenType::KwMut))
         isMut = true;
+      pendingNul = false;
     } else if (match(TokenType::And)) {
       isRef = true;
       morphologyPrefix += "&&";
       Token tok = previous();
       isRebindable = tok.IsSwappablePtr;
-      isPtrNullable = isPtrNullable || tok.HasNull;
+      isPtrNullable = isPtrNullable || pendingNul || tok.HasNull;
       isRebindBlocked = tok.IsBlocked;
-      if (isPtrNullable) {
-        error(tok, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+      handleLayers.push_back({BindingMorphology::Reference, tok.IsSwappablePtr,
+                              pendingNul || tok.HasNull, tok.IsBlocked});
+      handleLayers.push_back(
+          {BindingMorphology::Reference, false, false, false});
+      if (pendingNul || tok.HasNull) {
+        HasError = true;
+        DiagnosticEngine::report(
+            tok.Loc, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
       }
       if (match(TokenType::KwMut))
         isMut = true;
+      pendingNul = false;
     } else if (match(TokenType::Caret)) {
       isUnique = true;
       morphologyPrefix += "^";
       Token tok = previous();
       isRebindable = tok.IsSwappablePtr;
-      isPtrNullable = isPtrNullable || tok.HasNull;
+      isPtrNullable = isPtrNullable || pendingNul || tok.HasNull;
       isRebindBlocked = tok.IsBlocked;
+      handleLayers.push_back({BindingMorphology::Unique, tok.IsSwappablePtr,
+                              pendingNul || tok.HasNull, tok.IsBlocked});
+      pendingNul = false;
     } else if (match(TokenType::Tilde)) {
       isShared = true;
       morphologyPrefix += "~";
       Token tok = previous();
       isRebindable = tok.IsSwappablePtr;
-      isPtrNullable = isPtrNullable || tok.HasNull;
+      isPtrNullable = isPtrNullable || pendingNul || tok.HasNull;
       isRebindBlocked = tok.IsBlocked;
+      handleLayers.push_back({BindingMorphology::Shared, tok.IsSwappablePtr,
+                              pendingNul || tok.HasNull, tok.IsBlocked});
+      pendingNul = false;
     } else if (match(TokenType::Star)) {
+      if (pendingNul) {
+        HasError = true;
+        DiagnosticEngine::report(nulTok.Loc,
+                                 DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul *");
+      }
       isPointer = true;
       morphologyPrefix += "*";
       Token tok = previous();
       isRebindable = tok.IsSwappablePtr;
-      isPtrNullable = isPtrNullable || tok.HasNull;
+      isPtrNullable = isPtrNullable || pendingNul || tok.HasNull;
       isRebindBlocked = tok.IsBlocked;
+      handleLayers.push_back({BindingMorphology::Raw, tok.IsSwappablePtr,
+                              pendingNul || tok.HasNull, tok.IsBlocked});
+      pendingNul = false;
+    } else if (match(TokenType::TokenNull)) {
+      if (pendingNul) {
+        HasError = true;
+        DiagnosticEngine::report(nulTok.Loc,
+                                 DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul ?");
+      }
+      isPointer = true;
+      isPtrNullable = true;
+      morphologyPrefix += "?";
+      Token tok = previous();
+      isRebindable = tok.IsSwappablePtr;
+      isRebindBlocked = tok.IsBlocked;
+      handleLayers.push_back(
+          {BindingMorphology::Raw, tok.IsSwappablePtr, true, tok.IsBlocked});
+      pendingNul = false;
     } else {
       break;
     }
+  }
+
+  if (!handleLayers.empty()) {
+    const auto outer = handleLayers.front().Morphology;
+    isRef = outer == BindingMorphology::Reference;
+    isUnique = outer == BindingMorphology::Unique;
+    isShared = outer == BindingMorphology::Shared;
+    isPointer = outer == BindingMorphology::Raw;
+    isRebindable = handleLayers.front().Rebindable;
+    isRebindBlocked = handleLayers.front().Blocked;
+    isPtrNullable = handleLayers.front().Nullable;
   }
 
   if (isPtrNullable && (isUnique || isShared)) {
@@ -137,9 +198,8 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern(bool inheritedFres
     p->SubPatterns = std::move(subs);
     p->HasAutoBinding = hasAutoBinding;
     p->IsReference = isRef;
-    p->Permission = BindingPermission::fromLegacy(
-        isPointer, isUnique, isShared, isRef, isRebindable,
-        isPtrNullable, isRebindBlocked, false, false, false);
+    p->Permission.HandleLayers = handleLayers;
+    p->Permission.syncProjections();
     return p;
   }
 
@@ -272,17 +332,11 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern(bool inheritedFres
             consume(TokenType::Dot, DiagID::ERR_PARSER_EXPECTED_AFTER_IN_NAMED_PATTERN);
 
             std::string fieldPrefix = "";
-            if (match(TokenType::Star))
-              fieldPrefix = "*";
-            else if (match(TokenType::Caret))
-              fieldPrefix = "^";
-            else if (match(TokenType::Tilde))
-              fieldPrefix = "~";
-            else if (match(TokenType::Ampersand))
-              fieldPrefix = "&";
-
-            if (match(TokenType::TokenNull))
-              fieldPrefix += "?";
+            while (match(TokenType::Star) || match(TokenType::TokenNull) ||
+                   match(TokenType::Caret) || match(TokenType::Tilde) ||
+                   match(TokenType::Ampersand) || match(TokenType::And)) {
+              fieldPrefix += previous().Text;
+            }
             if (match(TokenType::TokenWrite))
               fieldPrefix += "#";
 
@@ -313,9 +367,8 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern(bool inheritedFres
       p->SubPatternNames = std::move(subNames);
       p->HasAutoBinding = hasAutoBinding;
       p->IsReference = isRef;
-      p->Permission = BindingPermission::fromLegacy(
-          isPointer, isUnique, isShared, isRef, isRebindable,
-          isPtrNullable, isRebindBlocked, false, false, false);
+      p->Permission.HandleLayers = handleLayers;
+      p->Permission.syncProjections();
       return p;
     }
 
@@ -328,10 +381,10 @@ std::unique_ptr<MatchArm::Pattern> Parser::parseSinglePattern(bool inheritedFres
     p->IsReference = isRef;
     p->IsValueMutable = nameTok.HasWrite;
     p->IsValueBlocked = nameTok.IsBlocked;
-    p->Permission = BindingPermission::fromLegacy(
-        isPointer, isUnique, isShared, isRef, isRebindable,
-        isPtrNullable, isRebindBlocked, nameTok.HasWrite, false,
-        nameTok.IsBlocked);
+    p->Permission.HandleLayers = handleLayers;
+    p->Permission.syncProjections();
+    p->Permission.SoulWritable = nameTok.HasWrite;
+    p->Permission.SoulBlocked = nameTok.IsBlocked;
     return p;
   }
 
@@ -426,11 +479,12 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
   if (match(TokenType::Bang) || match(TokenType::Minus) ||
       match(TokenType::PlusPlus) || match(TokenType::MinusMinus) ||
       match(TokenType::Caret) || match(TokenType::Tilde) ||
-      match(TokenType::Star) || match(TokenType::Ampersand) ||
-      match(TokenType::And) || match(TokenType::At) ||
-      match(TokenType::MorphicIdentity)) {
+      match(TokenType::Star) || match(TokenType::TokenNull) ||
+      match(TokenType::Ampersand) || match(TokenType::And) ||
+      match(TokenType::At) || match(TokenType::MorphicIdentity)) {
     Token tok = previous();
-    TokenType op = tok.Kind;
+    TokenType op =
+        tok.Kind == TokenType::TokenNull ? TokenType::Star : tok.Kind;
     auto sub = parsePrimary(allowTrailingClosure);
     if (op == TokenType::And) {
       auto inner = std::make_unique<UnaryExpr>(TokenType::Ampersand, std::move(sub));
@@ -448,10 +502,10 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
           selected->SelectsHandleIdentity = true;
       }
     }
-    node->HasNull = tok.HasNull;
+    node->HasNull = tok.Kind == TokenType::TokenNull || tok.HasNull;
     node->IsRebindable = tok.IsSwappablePtr;
     node->IsValueMutable = tok.HasWrite;
-    node->IsValueNullable = tok.HasNull;
+    node->IsValueNullable = node->HasNull;
     node->IsRebindBlocked = tok.IsBlocked;
     node->IsValueBlocked = tok.IsBlocked;
     node->Permission = BindingPermission::fromLegacy(
@@ -656,14 +710,13 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
         }
 
         std::string prefix = "";
-        if (match(TokenType::Star))
-          prefix = "*";
-        else if (match(TokenType::Caret))
-          prefix = "^";
-        else if (match(TokenType::Tilde))
-          prefix = "~";
-        else if (match(TokenType::Ampersand))
-          prefix = "&";
+        while (match(TokenType::Star) || match(TokenType::TokenNull) ||
+               match(TokenType::Caret) || match(TokenType::Tilde) ||
+               match(TokenType::Ampersand) || match(TokenType::And)) {
+          prefix += previous().Text;
+        }
+        if (match(TokenType::TokenWrite))
+          prefix += "#";
 
         Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
         std::string fieldName = fieldNameTok.Text;
@@ -697,17 +750,11 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
           }
 
           std::string prefix = "";
-          if (match(TokenType::Star))
-            prefix = "*";
-          else if (match(TokenType::Caret))
-            prefix = "^";
-          else if (match(TokenType::Tilde))
-            prefix = "~";
-          else if (match(TokenType::Ampersand))
-            prefix = "&";
-
-          if (match(TokenType::TokenNull))
-            prefix += "?";
+          while (match(TokenType::Star) || match(TokenType::TokenNull) ||
+                 match(TokenType::Caret) || match(TokenType::Tilde) ||
+                 match(TokenType::Ampersand) || match(TokenType::And)) {
+            prefix += previous().Text;
+          }
           if (match(TokenType::TokenWrite))
             prefix += "#";
 
@@ -795,12 +842,11 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
             }
 
             std::string prefix = "";
-            if (match(TokenType::Star)) prefix = "*";
-            else if (match(TokenType::Caret)) prefix = "^";
-            else if (match(TokenType::Tilde)) prefix = "~";
-            else if (match(TokenType::Ampersand)) prefix = "&";
-            
-            if (match(TokenType::TokenNull)) prefix += "?";
+            while (match(TokenType::Star) || match(TokenType::TokenNull) ||
+                   match(TokenType::Caret) || match(TokenType::Tilde) ||
+                   match(TokenType::Ampersand) || match(TokenType::And)) {
+              prefix += previous().Text;
+            }
             if (match(TokenType::TokenWrite)) prefix += "#";
             
             Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
@@ -968,14 +1014,13 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
           }
 
           std::string prefix = "";
-          if (match(TokenType::Star))
-            prefix = "*";
-          else if (match(TokenType::Caret))
-            prefix = "^";
-          else if (match(TokenType::Tilde))
-            prefix = "~";
-          else if (match(TokenType::Ampersand))
-            prefix = "&";
+          while (match(TokenType::Star) || match(TokenType::TokenNull) ||
+                 match(TokenType::Caret) || match(TokenType::Tilde) ||
+                 match(TokenType::Ampersand) || match(TokenType::And)) {
+            prefix += previous().Text;
+          }
+          if (match(TokenType::TokenWrite))
+            prefix += "#";
 
           Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
           std::string fieldName = fieldNameTok.Text;
@@ -1105,6 +1150,8 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       // If we see Star and the next token is NOT a member name (Identifier, KwUninit, KwNull, KwSelf),
       // we consume the Star and parse it as a SpreadExpr.
       if (check(TokenType::Star) &&
+          !checkAt(1, TokenType::Star) &&
+          !checkAt(1, TokenType::TokenNull) &&
           !checkAt(1, TokenType::Identifier) &&
           !checkAt(1, TokenType::KwUninit) &&
           !checkAt(1, TokenType::KwNull) &&
@@ -1117,20 +1164,24 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
       }
 
       std::string prefix = "";
-      if (match(TokenType::Star))
-        prefix = previous().Text;
-      else if (match(TokenType::Caret))
-        prefix = previous().Text;
-      else if (match(TokenType::Tilde))
-        prefix = previous().Text;
-      else if (match(TokenType::Ampersand))
-        prefix = previous().Text;
-      else if (match(TokenType::DoubleQuestion))
-        {
-          Token opTok = previous();
-          error(opTok, DiagID::ERR_NULLABLE_ASSERTION_REMOVED);
-          prefix = opTok.Text;
+      Token firstHatTok;
+      bool hasHat = false;
+      while (match(TokenType::Star) || match(TokenType::TokenNull) ||
+             match(TokenType::Caret) || match(TokenType::Tilde) ||
+             match(TokenType::Ampersand) || match(TokenType::And)) {
+        if (!hasHat) {
+          firstHatTok = previous();
+          hasHat = true;
         }
+        prefix += previous().Text;
+      }
+      if (match(TokenType::DoubleQuestion)) {
+        Token opTok = previous();
+        HasError = true;
+        DiagnosticEngine::report(opTok.Loc,
+                                 DiagID::ERR_NULLABLE_ASSERTION_REMOVED);
+        prefix += opTok.Text;
+      }
 
       if (match(TokenType::Identifier) || match(TokenType::KwUninit) ||
           match(TokenType::KwNull) || match(TokenType::KwSelf)) {
@@ -1190,6 +1241,10 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
         node->setLocation(dotTok, m_CurrentFile);
         node->MemberLoc = intTok.Loc;
         expr = std::move(node);
+      } else if (hasHat && firstHatTok.Kind == TokenType::TokenNull) {
+        HasError = true;
+        DiagnosticEngine::report(firstHatTok.Loc,
+                                 DiagID::ERR_NULLABLE_ASSERTION_REMOVED);
       } else {
         error(peek(), DiagID::ERR_PARSER_EXPECTED_MEMBER_NAME_OR_INDEX_AFTER);
       }
@@ -1218,9 +1273,13 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
     } else if (match(TokenType::MinusMinus)) {
       expr =
           std::make_unique<PostfixExpr>(TokenType::MinusMinus, std::move(expr));
-    } else if (match(TokenType::DoubleQuestion)) {
+    } else if (check(TokenType::DoubleQuestion) &&
+               peek().Line == previous().Line &&
+               match(TokenType::DoubleQuestion)) {
       Token opTok = previous();
-      error(opTok, DiagID::ERR_NULLABLE_ASSERTION_REMOVED);
+      HasError = true;
+      DiagnosticEngine::report(opTok.Loc,
+                               DiagID::ERR_NULLABLE_ASSERTION_REMOVED);
       auto node = std::make_unique<PostfixExpr>(TokenType::DoubleQuestion,
                                                 std::move(expr));
       node->setLocation(opTok, m_CurrentFile);
@@ -1231,9 +1290,15 @@ std::unique_ptr<Expr> Parser::parsePrimary(bool allowTrailingClosure) {
           std::make_unique<PostfixExpr>(TokenType::TokenWrite, std::move(expr));
       node->setLocation(opTok, m_CurrentFile);
       expr = std::move(node);
-    } else if (match(TokenType::TokenNull)) {
+    } else if (check(TokenType::TokenNull) &&
+               peek().Line == previous().Line &&
+               match(TokenType::TokenNull)) {
       Token opTok = previous();
-      error(opTok, DiagID::ERR_NULLABLE_ASSERTION_REMOVED);
+      while (match(TokenType::TokenNull)) {
+      }
+      HasError = true;
+      DiagnosticEngine::report(opTok.Loc,
+                               DiagID::ERR_NULLABLE_ASSERTION_REMOVED);
       auto node =
           std::make_unique<PostfixExpr>(TokenType::TokenNull, std::move(expr));
       node->setLocation(opTok, m_CurrentFile);
@@ -1341,14 +1406,13 @@ std::unique_ptr<Expr> Parser::parseAllocExpr() {
         }
 
         std::string prefix = "";
-        if (match(TokenType::Star))
-          prefix = "*";
-        else if (match(TokenType::Caret))
-          prefix = "^";
-        else if (match(TokenType::Tilde))
-          prefix = "~";
-        else if (match(TokenType::Ampersand))
-          prefix = "&";
+        while (match(TokenType::Star) || match(TokenType::TokenNull) ||
+               match(TokenType::Caret) || match(TokenType::Tilde) ||
+               match(TokenType::Ampersand) || match(TokenType::And)) {
+          prefix += previous().Text;
+        }
+        if (match(TokenType::TokenWrite))
+          prefix += "#";
 
         Token fieldNameTok = consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_FIELD_NAME);
         std::string fieldName = fieldNameTok.Text;
@@ -1454,44 +1518,98 @@ std::unique_ptr<Expr> Parser::parseForExpr() {
   } else if (match(TokenType::KwLet)) {
     error(previous(), DiagID::ERR_PARSER_FOR_LET_REMOVED);
   } else if (!match(TokenType::KwAuto)) {
-    consume(TokenType::KwAuto, DiagID::ERR_PARSER_EXPECTED_AUTO_OR_LET_DECLARATION_IN_FOR);
+    if (!check(TokenType::KwNul)) {
+      consume(TokenType::KwAuto, DiagID::ERR_PARSER_EXPECTED_AUTO_OR_LET_DECLARATION_IN_FOR);
+    }
   }
   std::string morphologyPrefix = "";
   bool isRef = false;
+  bool pendingNul = false;
+  Token nulTok;
   std::vector<HandleLayer> handleLayers;
   while (true) {
+    if (match(TokenType::KwNul)) {
+      pendingNul = true;
+      nulTok = previous();
+      continue;
+    }
     if (match(TokenType::Ampersand)) {
       isRef = true;
       morphologyPrefix += "&";
       Token t = previous();
       handleLayers.push_back({BindingMorphology::Reference, t.IsSwappablePtr,
-                              t.HasNull, t.IsBlocked});
+                              pendingNul || t.HasNull, t.IsBlocked});
+      if (pendingNul || t.HasNull) {
+        HasError = true;
+        DiagnosticEngine::report(
+            t.Loc, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+      }
+      pendingNul = false;
     } else if (match(TokenType::And)) {
       isRef = true;
       morphologyPrefix += "&&";
       Token t = previous();
       handleLayers.push_back({BindingMorphology::Reference, t.IsSwappablePtr,
-                              t.HasNull, t.IsBlocked});
+                              pendingNul || t.HasNull, t.IsBlocked});
       handleLayers.push_back(
           {BindingMorphology::Reference, false, false, false});
+      if (pendingNul || t.HasNull) {
+        HasError = true;
+        DiagnosticEngine::report(
+            t.Loc, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+      }
+      pendingNul = false;
     } else if (match(TokenType::Caret)) {
       morphologyPrefix += "^";
       Token t = previous();
       handleLayers.push_back({BindingMorphology::Unique, t.IsSwappablePtr,
-                              t.HasNull, t.IsBlocked});
+                              pendingNul || t.HasNull, t.IsBlocked});
+      pendingNul = false;
     } else if (match(TokenType::Star)) {
+      if (pendingNul) {
+        HasError = true;
+        DiagnosticEngine::report(nulTok.Loc,
+                                 DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul *");
+      }
       morphologyPrefix += "*";
       Token t = previous();
       handleLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr,
-                              t.HasNull, t.IsBlocked});
+                              pendingNul || t.HasNull, t.IsBlocked});
+      pendingNul = false;
+    } else if (match(TokenType::TokenNull)) {
+      if (pendingNul) {
+        HasError = true;
+        DiagnosticEngine::report(nulTok.Loc,
+                                 DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul ?");
+      }
+      morphologyPrefix += "?";
+      Token t = previous();
+      handleLayers.push_back({BindingMorphology::Raw, t.IsSwappablePtr,
+                              true, t.IsBlocked});
+      pendingNul = false;
     } else if (match(TokenType::Tilde)) {
       morphologyPrefix += "~";
       Token t = previous();
       handleLayers.push_back({BindingMorphology::Shared, t.IsSwappablePtr,
-                              t.HasNull, t.IsBlocked});
+                              pendingNul || t.HasNull, t.IsBlocked});
+      pendingNul = false;
     } else {
       break;
     }
+  }
+  if (!handleLayers.empty() && handleLayers.front().Nullable &&
+      (handleLayers.front().Morphology == BindingMorphology::Unique ||
+       handleLayers.front().Morphology == BindingMorphology::Shared)) {
+    HasError = true;
+    DiagnosticEngine::report(
+        previous().Loc, DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED,
+        handleLayers.front().Morphology == BindingMorphology::Unique
+            ? "nul ^T"
+            : "nul ~T");
+  } else if (pendingNul) {
+    HasError = true;
+    DiagnosticEngine::report(nulTok.Loc,
+                             DiagID::ERR_SAFE_NULLABLE_PAYLOAD_REMOVED, "nul");
   }
   Token varName =
       consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_VARIABLE_NAME_IN_FOR);
@@ -1509,8 +1627,9 @@ std::unique_ptr<Expr> Parser::parseForExpr() {
   node->MorphologyPrefix = morphologyPrefix;
   node->IsPlaceAlias = isPlaceAlias;
   node->Permission = BindingPermission::fromLegacy(
-      morphologyPrefix == "*", morphologyPrefix == "^", morphologyPrefix == "~",
-      isRef, false, false, false, isMut, false, false);
+      morphologyPrefix == "*" || morphologyPrefix == "?",
+      morphologyPrefix == "^", morphologyPrefix == "~",
+      isRef, false, morphologyPrefix == "?", false, isMut, false, false);
   if (!handleLayers.empty()) {
     node->Permission.HandleLayers = std::move(handleLayers);
     node->Permission.syncProjections();
@@ -1594,7 +1713,8 @@ std::unique_ptr<Expr> Parser::parseClosureExpr() {
       if (t == TokenType::EndOfFile) break;
       if (t != TokenType::Identifier && t != TokenType::Comma && t != TokenType::Ampersand &&
           t != TokenType::And && t != TokenType::Caret && t != TokenType::Tilde &&
-          t != TokenType::Star && t != TokenType::TokenNull && t != TokenType::TokenWrite) {
+          t != TokenType::Star && t != TokenType::TokenNull && t != TokenType::TokenWrite &&
+          t != TokenType::KwNul) {
         break;
       }
       lookahead++;
@@ -1615,12 +1735,11 @@ std::unique_ptr<Expr> Parser::parseClosureExpr() {
            else { error(peek(), DiagID::ERR_PARSER_EXPECTED_CEDE_OR_COPY_MODIFIER_IN_CLOSU); return nullptr; }
 
            std::string prefix = "";
-           if (match(TokenType::Tilde)) prefix = "~";
-           else if (match(TokenType::Caret)) prefix = "^";
-           else if (match(TokenType::Star)) prefix = "*";
-           else if (match(TokenType::Ampersand)) prefix = "&";
-
-           if (match(TokenType::TokenNull)) prefix += "?";
+           while (match(TokenType::Tilde) || match(TokenType::Caret) ||
+                  match(TokenType::Star) || match(TokenType::TokenNull) ||
+                  match(TokenType::Ampersand) || match(TokenType::And)) {
+             prefix += previous().Text;
+           }
            if (match(TokenType::TokenWrite)) prefix += "#";
 
            cap.Name = prefix + consume(TokenType::Identifier, DiagID::ERR_PARSER_EXPECTED_VARIABLE_NAME_TO_CAPTURE).Text;
@@ -1636,24 +1755,76 @@ std::unique_ptr<Expr> Parser::parseClosureExpr() {
         if (check(TokenType::FatArrow)) break; // handle zero explicit args `{ [cede x] => ... }`
         SourceLocation paramLoc = peek().Loc;
         std::vector<HandleLayer> layers;
+        bool pendingNul = false;
+        Token nulTok;
         while (true) {
+          if (match(TokenType::KwNul)) {
+            pendingNul = true;
+            nulTok = previous();
+            continue;
+          }
           if (match(TokenType::And)) {
+            Token t = previous();
+            layers.push_back({BindingMorphology::Reference, t.IsSwappablePtr, pendingNul || t.HasNull, t.IsBlocked});
             layers.push_back({BindingMorphology::Reference, false, false, false});
-            layers.push_back({BindingMorphology::Reference, false, false, false});
+            if (pendingNul || t.HasNull) {
+              HasError = true;
+              DiagnosticEngine::report(
+                  t.Loc, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+            }
+            pendingNul = false;
           } else if (match(TokenType::Ampersand)) {
-            layers.push_back({BindingMorphology::Reference, false, false, false});
+            Token t = previous();
+            layers.push_back({BindingMorphology::Reference, t.IsSwappablePtr, pendingNul || t.HasNull, t.IsBlocked});
+            if (pendingNul || t.HasNull) {
+              HasError = true;
+              DiagnosticEngine::report(
+                  t.Loc, DiagID::ERR_PARSER_BORROWED_POINTERS_CANNOT_BE_NULLABLE);
+            }
+            pendingNul = false;
           } else if (match(TokenType::Caret)) {
-            layers.push_back({BindingMorphology::Unique, false, false, false});
+            Token t = previous();
+            layers.push_back({BindingMorphology::Unique, t.IsSwappablePtr, pendingNul || t.HasNull, t.IsBlocked});
+            pendingNul = false;
           } else if (match(TokenType::Tilde)) {
-            layers.push_back({BindingMorphology::Shared, false, false, false});
+            Token t = previous();
+            layers.push_back({BindingMorphology::Shared, t.IsSwappablePtr, pendingNul || t.HasNull, t.IsBlocked});
+            pendingNul = false;
           } else if (match(TokenType::Star)) {
-            layers.push_back({BindingMorphology::Raw, false, false, false});
+            if (pendingNul) {
+              HasError = true;
+              DiagnosticEngine::report(nulTok.Loc,
+                                       DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul *");
+            }
+            Token t = previous();
+            layers.push_back({BindingMorphology::Raw, t.IsSwappablePtr, pendingNul || t.HasNull, t.IsBlocked});
+            pendingNul = false;
+          } else if (match(TokenType::TokenNull)) {
+            if (pendingNul) {
+              HasError = true;
+              DiagnosticEngine::report(nulTok.Loc,
+                                       DiagID::ERR_LEGACY_NUL_RAW_REMOVED, "nul ?");
+            }
+            Token t = previous();
+            layers.push_back({BindingMorphology::Raw, t.IsSwappablePtr, true, t.IsBlocked});
+            pendingNul = false;
           } else {
             break;
           }
         }
-        if (match(TokenType::TokenNull)) {
-          if (!layers.empty()) layers.back().Nullable = true;
+        if (!layers.empty() && layers.front().Nullable &&
+            (layers.front().Morphology == BindingMorphology::Unique ||
+             layers.front().Morphology == BindingMorphology::Shared)) {
+          HasError = true;
+          DiagnosticEngine::report(
+              previous().Loc, DiagID::ERR_SAFE_NULLABLE_HANDLE_REMOVED,
+              layers.front().Morphology == BindingMorphology::Unique
+                  ? "nul ^T"
+                  : "nul ~T");
+        } else if (pendingNul) {
+          HasError = true;
+          DiagnosticEngine::report(
+              nulTok.Loc, DiagID::ERR_SAFE_NULLABLE_PAYLOAD_REMOVED, "nul");
         }
         if (match(TokenType::TokenWrite)) {
           if (!layers.empty()) layers.back().Rebindable = true;
@@ -1666,6 +1837,7 @@ std::unique_ptr<Expr> Parser::parseClosureExpr() {
         param.Permission.HandleLayers = layers;
         param.Permission.syncProjections();
         param.Permission.SoulWritable = name.HasWrite;
+        param.Permission.SoulBlocked = name.IsBlocked;
         expr->Params.push_back(param);
         expr->ArgNames.push_back(name.Text);
         if (!check(TokenType::FatArrow)) {

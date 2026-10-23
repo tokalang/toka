@@ -16,6 +16,6 @@ shape Data (val: i32)
 
 
 fn main() -> i32 {
-    auto *d = null:*Data // EXPECT: error[E04606]:
+    auto *d = null:*Data // EXPECT: error[E0483]:
     return 0
 }

@@ -145,8 +145,7 @@ int main() {
                             "Buffer<i32,N_>@Readable<i32>::Item#");
 
   const auto morphology = TypeSyntax::morphology(
-      "nul", TypeSyntax::morphology("*", i32, loc(120), loc(123)), loc(119),
-      loc(123));
+      "?", i32, loc(119), loc(123));
   const auto postfix = TypeSyntax::morphology("#", morphology, loc(119),
                                                loc(124), true);
   const auto missOutcome =
@@ -156,7 +155,7 @@ int main() {
   const auto removedUnique = TypeSyntax::morphology(
       "nul", TypeSyntax::morphology("^", i32, loc(138), loc(142)),
       loc(138), loc(142));
-  passed &= expectCanonical("morphology", postfix, "nul*i32#");
+  passed &= expectCanonical("morphology", postfix, "?i32#");
   passed &= expectCanonical("miss outcome", missOutcome, "i32|miss");
   passed &= expectCanonical("invalid recovery",
                             TypeSyntax::invalid("Option<i32", loc(125), loc(134)),
@@ -216,19 +215,19 @@ int main() {
       "*", TypeSyntax::morphology("*", TypeSyntax::morphology("*", i32, loc(142), loc(145)), loc(141), loc(145)), loc(140), loc(145));
 
   const auto nulOuterRaw = TypeSyntax::morphology(
-      "nul", TypeSyntax::morphology("*", TypeSyntax::morphology("*", i32, loc(141), loc(144)), loc(140), loc(144)), loc(139), loc(144));
+      "?", TypeSyntax::morphology("*", i32, loc(140), loc(144)), loc(139), loc(144));
   const auto nulInnerRaw = TypeSyntax::morphology(
-      "*", TypeSyntax::morphology("nul", TypeSyntax::morphology("*", i32, loc(141), loc(144)), loc(140), loc(144)), loc(139), loc(144));
+      "*", TypeSyntax::morphology("?", i32, loc(140), loc(144)), loc(139), loc(144));
   const auto nulBothRaw = TypeSyntax::morphology(
-      "nul", TypeSyntax::morphology("*", TypeSyntax::morphology("nul", TypeSyntax::morphology("*", i32, loc(142), loc(145)), loc(141), loc(145)), loc(140), loc(145)), loc(139), loc(145));
+      "?", TypeSyntax::morphology("?", i32, loc(140), loc(145)), loc(139), loc(145));
 
   passed &= expectCanonical("double borrow canonical", doubleBorrow, "&&i32");
   passed &= expectCanonical("borrow unique canonical", borrowUnique, "&^i32");
   passed &= expectCanonical("borrow shared canonical", borrowShared, "&~i32");
   passed &= expectCanonical("triple raw canonical", tripleRaw, "***i32");
-  passed &= expectCanonical("nul outer raw canonical", nulOuterRaw, "nul**i32");
-  passed &= expectCanonical("nul inner raw canonical", nulInnerRaw, "*nul*i32");
-  passed &= expectCanonical("nul both raw canonical", nulBothRaw, "nul*nul*i32");
+  passed &= expectCanonical("nul outer raw canonical", nulOuterRaw, "?*i32");
+  passed &= expectCanonical("nul inner raw canonical", nulInnerRaw, "*?i32");
+  passed &= expectCanonical("nul both raw canonical", nulBothRaw, "??i32");
 
   passed &= expectLowered("double borrow direct lowering", doubleBorrow);
   passed &= expectLowered("borrow unique direct lowering", borrowUnique);
@@ -252,9 +251,9 @@ int main() {
       {"&^i32", borrowUnique},
       {"&~i32", borrowShared},
       {"***i32", tripleRaw},
-      {"nul**i32", nulOuterRaw},
-      {"*nul*i32", nulInnerRaw},
-      {"nul*nul*i32", nulBothRaw},
+      {"?*i32", nulOuterRaw},
+      {"*?i32", nulInnerRaw},
+      {"??i32", nulBothRaw},
   };
   std::map<std::string, std::string> seenMangles;
   for (const auto &p : allSyntaxes) {

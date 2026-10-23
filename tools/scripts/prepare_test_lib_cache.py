@@ -11,7 +11,7 @@ from pathlib import Path
 FNV_OFFSET = 14695981039346656037
 FNV_PRIME = 1099511628211
 OBJECT_CACHE_DENYLIST = set()
-CACHE_FORMAT_VERSION = 15
+CACHE_FORMAT_VERSION = 16
 CACHE_ARCHIVE_NAME = "libtoka_cache.a"
 
 
@@ -121,6 +121,8 @@ def build_common_fingerprint(tokac: str):
         "tokac": tokac_real,
         "tokac_mtime": os.path.getmtime(tokac_real) if os.path.exists(tokac_real) else 0,
         "cache_format_version": CACHE_FORMAT_VERSION,
+        "language_epoch": "0.20",
+        "encap_epoch": "0.19",
         "version": version,
         "target_env": os.environ.get("TOKA_TARGET_TRIPLE", ""),
         "object_cache_denylist": sorted(OBJECT_CACHE_DENYLIST),

@@ -52,7 +52,7 @@ extern fn toka_task_unsubscribe_completion(*tcb: void, wait_id: u32, slot_gen: u
 // This operation extends a reference already owned by a live TaskHandle or
 // runtime descriptor. It is not a way to rediscover a released task.
 extern fn toka_task_try_retain(*tcb: void) -> i32
-extern fn toka_task_scope_create() -> nul *void
+extern fn toka_task_scope_create() -> ?void
 extern fn toka_task_clear_current(*tcb: void) -> void
 extern fn toka_task_scope_try_enroll(*scope: void, *tcb: void) -> i32
 extern fn toka_task_scope_enroll_scoped(*scope: void, *tcb: void) -> i32
@@ -65,25 +65,25 @@ extern fn toka_task_scope_release(*scope: void) -> void
 
 // Hook for TaskHandle destruction. A cold handle cancels and cleans up;
 // activated tasks transfer to ordinary detached runtime ownership.
-pub fn __toka_detach_task(nul *handle: void) {
-    if *handle != null {
+pub fn __toka_detach_task(?handle: void) {
+    if ?handle != null {
         auto *live_handle = handle.unwrap()
         toka_task_drop_handle(*live_handle)
     }
 }
 
-pub fn task_get_coro_handle<T>(handle: TaskHandle<T>) -> nul *void {
-    return handle.*coro_handle
+pub fn task_get_coro_handle<T>(handle: TaskHandle<T>) -> ?void {
+    return handle.?coro_handle
 }
 
 pub shape TaskHandle<T>(
-    pub nul *#coro_handle: void
+    pub ?#coro_handle: void
 )
 
 impl<T> TaskHandle<T>@Encap {
     fn drop(self#) {
-        if self.*coro_handle != null {
-            __toka_detach_task(self.*coro_handle)
+        if self.?coro_handle != null {
+            __toka_detach_task(self.?coro_handle)
         }
     }
     

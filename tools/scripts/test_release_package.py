@@ -289,6 +289,20 @@ def main():
             candidate_019=json.loads((Path(output_dir)/'result.json').read_text())
             checks.append('0.19-installed-candidate-controls')
 
+        candidate_020 = None
+        if args.version and args.version.startswith('v0.20.'):
+            descriptor=json.loads((package_root/'sdk.json').read_text())
+            output_dir = str(args.controls_output or archive.parent/('candidate-controls-'+uuid.uuid4().hex))
+            command=[sys.executable,str(ROOT/'tools/scripts/test_0_20_candidate.py'),'--sdk',str(package_root),'--revision',descriptor['candidate_revision'],'--version',args.version,'--output',output_dir]
+            target = args.target
+            if not target and package_root.name.startswith(f"toka-{args.version}-"):
+                target = package_root.name[len(f"toka-{args.version}-"):]
+            if target:
+                command.extend(['--target', target])
+            run(command,root,env)
+            candidate_020=json.loads((Path(output_dir)/'result.json').read_text())
+            checks.append('0.20-installed-candidate-controls')
+
     print(json.dumps({
         **({"candidate_013": candidate_013} if candidate_013 is not None else {}),
         **({"candidate_014": candidate_014} if candidate_014 is not None else {}),
@@ -297,6 +311,7 @@ def main():
         **({"candidate_017": candidate_017} if candidate_017 is not None else {}),
         **({"candidate_018": candidate_018} if candidate_018 is not None else {}),
         **({"candidate_019": candidate_019} if candidate_019 is not None else {}),
+        **({"candidate_020": candidate_020} if candidate_020 is not None else {}),
         **({"r3_r5": r3_r5} if r3_r5 is not None else {}),
         "checks": checks,
         "count": len(checks),

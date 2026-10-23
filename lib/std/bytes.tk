@@ -62,7 +62,7 @@ pub fn append_bytes_to_vec(target#: Vec<u8>, data: bytes) {
 }
 
 pub shape Bytes (
-    nul *#buf#: [u8] = null as nul *[u8],
+    ?#buf#: [u8] = null as ?[u8],
     len#: usize = 0,
     cap#: usize = 0
 )
@@ -70,9 +70,9 @@ pub shape Bytes (
 impl Bytes@Encap {
     fn drop(self#) {
         unsafe {
-            if self.*buf != null {
-                unsafe free [self.len]self.*#buf
-                self.*buf = null as nul *[u8]
+            if self.?buf != null {
+                unsafe free [self.len]self.?#buf
+                self.?buf = null as ?[u8]
             }
         }
     }
@@ -83,22 +83,24 @@ impl Bytes {
     pub fn clone(self) -> Bytes {
         unsafe {
             if self.cap == 0 || self.len == 0 {
-                return Bytes(*buf = null as nul *[u8], len = 0, cap = 0)
+                return Bytes(?buf = null as ?[u8], len = 0, cap = 0)
             }
             auto *new_buf# = unsafe alloc [self.cap] u8 as *[u8]
-            auto i# = 0:usize
-            loop i < self.len {
-                new_buf[i] = self.buf[i]
-                i += 1
+            if self.?buf != null {
+                auto i# = 0:usize
+                loop i < self.len {
+                    new_buf[i] = self.buf[i]
+                    i += 1
+                }
             }
-            return Bytes(*buf = *new_buf, len = self.len, cap = self.cap)
+            return Bytes(?buf = *new_buf, len = self.len, cap = self.cap)
         }
     }
 }
 
 impl Bytes {
     pub fn new() -> Bytes {
-        return Bytes(*buf = null as nul *[u8], len = 0, cap = 0)
+        return Bytes(?buf = null as ?[u8], len = 0, cap = 0)
     }
 
     pub fn with_capacity(cap: usize) -> Bytes {
@@ -107,7 +109,7 @@ impl Bytes {
         }
         unsafe {
             auto *p# = unsafe alloc [cap] u8 as *[u8]
-            return Bytes(*buf = *p, len = 0, cap = cap)
+            return Bytes(?buf = *p, len = 0, cap = cap)
         }
     }
 
@@ -118,8 +120,8 @@ impl Bytes {
             auto owned# = cede v
             auto l = owned.len()
             auto c = owned.cap()
-            auto nul *p# = owned#.unsafe_into_raw()
-            return Bytes(*buf = *p, len = l, cap = c)
+            auto ?p# = owned#.unsafe_into_raw()
+            return Bytes(?buf = ?p, len = l, cap = c)
         }
     }
 
@@ -129,11 +131,11 @@ impl Bytes {
         unsafe {
             auto l = self.len
             auto c = self.cap
-            auto nul *p# = self.*buf
+            auto ?p# = self.?buf
             self.len = 0
             self.cap = 0
-            self.*buf = null as nul *[u8]
-            return Vec<u8>::from_raw(*p, l, c)
+            self.?buf = null as ?[u8]
+            return Vec<u8>::from_raw(?p, l, c)
         }
     }
 
@@ -159,7 +161,7 @@ impl Bytes {
             return Bytes::new()
         }
         unsafe {
-            return Bytes(*buf = raw as *[u8], len = len, cap = cap)
+            return Bytes(?buf = raw as *[u8], len = len, cap = cap)
         }
     }
 
@@ -177,22 +179,23 @@ impl Bytes {
 
     // Raw access is intentionally explicit: ordinary users should pass a
     // Bytes value or its borrowed `bytes` view, not retain this pointer.
-    pub fn unsafe_raw_ptr(self) -> nul *u8 {
+    pub fn unsafe_raw_ptr(self) -> ?u8 {
         unsafe {
-            if self.len == 0 || self.*buf == null {
-                return null as nul *u8
+            if self.len == 0 || self.?buf == null {
+                return null as ?u8
             }
-            auto *live_buf = self.*buf.unwrap()
+            auto *live_buf = self.?buf.unwrap()
             return *live_buf as *u8
         }
     }
 
     pub fn as_slice(self) -> bytes <- self {
         unsafe {
-            if self.len == 0 || self.*buf == null {
-                return "".as_bytes()
+            if self.len > 0 && self.?buf != null {
+                auto *live_buf = self.?buf.unwrap()
+                return bytes(&buf = &(live_buf[0]) as *[byte] as &[byte], len = self.len)
             }
-            return bytes(&buf = &(self.buf[0]) as *[byte] as &[byte], len = self.len)
+            return "".as_bytes()
         }
     }
 }

@@ -73,13 +73,13 @@ fn main() -> i32 {
 
         # Instrument Vec.drop in the test copy only
         vec_source = (ROOT / "lib/std/vec.tk").read_text(encoding="utf-8")
-        drop_target = "unsafe free [self.len]self.*#buf"
+        drop_target = "unsafe free [self.len]self.?#buf"
         require(vec_source.count(drop_target) == 1, "Vec.drop target not found or changed in lib/std/vec.tk")
         instrumented_vec = (
-            "extern fn toka_rt_test_notify_buffer_free(*ptr: void) -> void\n" +
+            "extern fn toka_rt_test_notify_buffer_free(?ptr: void) -> void\n" +
             vec_source.replace(
                 drop_target,
-                "toka_rt_test_notify_buffer_free(*self.*#buf as *void)\n                " + drop_target
+                "toka_rt_test_notify_buffer_free(self.?buf as ?void)\n                    " + drop_target
             )
         )
         (library / "std/vec.tk").write_text(instrumented_vec, encoding="utf-8")

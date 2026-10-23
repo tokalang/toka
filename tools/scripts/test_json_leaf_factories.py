@@ -100,10 +100,10 @@ def main():
                             ignore=shutil.ignore_patterns("*.o", "*.tki", "__pycache__"))
             string = library / "core/string.tk"
             text = string.read_text()
-            release = "unsafe free [0]self.*#buf"
+            release = "unsafe free [0]self.?#buf"
             assert text.count(release) == 2, "review changed string release instrumentation"
-            string.write_text("extern fn leaf_freed(nul *ptr: void) -> void\n" +
-                              text.replace(release, "leaf_freed(self.*buf as nul *void); " + release))
+            string.write_text("extern fn leaf_freed(?ptr: void) -> void\n" +
+                              text.replace(release, "leaf_freed(self.?buf as ?void); " + release))
             shim = work / "tracker.c"
             shim.write_text("static int enabled, count;\n"
                             "void leaf_watch(void) { enabled = 1; count = 0; }\n"

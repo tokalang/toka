@@ -50,12 +50,12 @@ pub fn net_setsockopt_reuse_impl(fd: i32) -> i32 {
 // Only addresses of the writable PAL-owned allocations below reach this helper.
 // Preserve the nullable view until the same pointer has been checked.
 fn win_writable_storage<T>(address: Addr) -> *T# {
-    auto nul *candidate# = unsafe (address as nul *T)
-    if *candidate is null {
+    auto ?candidate# = unsafe (address as ?T)
+    if ?candidate is null {
         unsafe { libc_abort() }
         unreachable
     } else {
-        auto verified = unsafe *candidate as Addr
+        auto verified = unsafe ?candidate as Addr
         auto *result# = unsafe (verified as *T)
         return *result
     }
