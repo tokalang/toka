@@ -78,7 +78,7 @@ pub fn net_bind_impl(fd: i32, ip: u32, port: u16) -> i32 {
 
 pub fn net_bind_with_diag_impl(fd: i32, ip: u32, port: u16, *out_errno: i32, *out_sockaddr: u8) -> i32 {
     unsafe {
-        return toka_rt_bind_with_diag(fd, ip, port, out_errno as *i32, out_sockaddr as *u8)
+        return toka_rt_bind_with_diag(fd, ip, port, *out_errno, *out_sockaddr)
     }
 }
 

@@ -718,10 +718,10 @@ impl string@PartialOrd {
             auto *b1 = self.c_str()
             auto *b2 = other.c_str()
             loop i < self.len && i < other.len {
-                auto *p1 = (b1 as usize + i) as *char
-                auto *p2 = (b2 as usize + i) as *char
-                if *p1 < *p2 { return -1 }
-                if *p1 > *p2 { return 1 }
+                auto *p1 = (*b1 as usize + i) as *char
+                auto *p2 = (*b2 as usize + i) as *char
+                if p1 < p2 { return -1 }
+                if p1 > p2 { return 1 }
                 i = i + 1
             }
             if self.len < other.len { return -1 }
@@ -966,7 +966,7 @@ impl bytes {
         }
         unsafe {
             auto *b = self.raw_ptr()
-            auto &c_buf = (b as *[char]) as &[char]
+            auto &c_buf = (*b as *[char]) as &[char]
             auto iter# = Cursor(&buf = &c_buf, len = sz, pos = 0)
             loop true {
                 auto opt = iter#.next()

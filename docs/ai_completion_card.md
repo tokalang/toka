@@ -259,6 +259,7 @@ return write_string_atomic(path.clone(), label.as_str())
 | Moved `Result` / `Option` | Prefer `guard auto ... else` for early exit, or `match` for two-way handling; `unwrap()` consumes whole-value ownership |
 | `u32` versus `char` comparison | Iterate the byte view and compare integer codes 48 through 57, not `'0'` |
 | Legacy `nul *` or nullable raw pointer | Use `?T` / `?p` (`?#p` for rebindable, `self.?next` for member handle, `guard ?p { ... }` for 1-layer narrowing) |
+| Raw pointer pointee access (`E0625`) | Wrap bare-name raw pointee read/write/member/index/method/call (`p`, `p = v`, `p.f`, `p[i]`, `p.m()`) in `unsafe { ... }` or `unsafe <expr>`, or keep the handle hat (`*p`, `?p`, `**pp`, `*#p = *#b`) when passing or rebinding the pointer handle itself |
 
 Before broad rewrites, preserve already-correct ownership and authority markers
 while repairing the reported site. Compiler diagnostics are authoritative for

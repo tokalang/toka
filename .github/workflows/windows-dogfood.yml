@@ -86,6 +86,7 @@ jobs:
           ctest --test-dir build --output-on-failure -R "^toka_018_stage1_verification$"
           ctest --test-dir build --output-on-failure -R "^toka_str_match_expr_0181$"
           ctest --test-dir build --output-on-failure -R "^toka_019_encap_visibility$"
+          ctest --test-dir build --output-on-failure -R "^toka_raw_pointer_unsafe_0201$"
           python3 tools/scripts/test_taskhandle_lifecycle.py --conformance-output build/taskhandle-lifecycle-conformance-windows.json
           python3 tools/scripts/test_restricted_cancellation_profile.py --candidate-sha "$GITHUB_SHA" --conformance-output build/toka-restricted-cancellation-windows.json
           python3 tools/scripts/test_generic_recursion.py --build-dir build --output-dir build/generic-recursion-gate-report

@@ -13,13 +13,13 @@ SETUP = '''
     auto address = unsafe *storage as Addr
     auto *writer# = unsafe (address as *i32)
 '''
-GENERIC_POSITIVE = '''fn put<T>(*out#:T, value:T) { out = value }
+GENERIC_POSITIVE = '''fn put<T>(*out#:T, value:T) { unsafe { out = value } }
 fn main() -> i32 {
 ''' + SETUP + '''
     put<i32>(*writer, 31)
-    if writer != 31 { return 1 }
+    unsafe { if writer != 31 { return 1 } }
     put(*writer, 47)
-    if writer != 47 { return 2 }
+    unsafe { if writer != 47 { return 2 } }
     unsafe free [1] *storage
     return 0
 }
@@ -58,7 +58,7 @@ def main():
                               'unsafe free [0] *storage\nreturn 0\n}\n')
             cases.append((source, 'E04572'))
             source = work / ('generic_caller_' + label + '.tk')
-            source.write_text('fn put<T>(*out#:T, value:T) { out = value }\nfn main() -> i32 {\n' +
+            source.write_text('fn put<T>(*out#:T, value:T) { unsafe { out = value } }\nfn main() -> i32 {\n' +
                               SETUP + 'auto *readonly = unsafe (address as *i32)\n' +
                               f'put{suffix}(*readonly, 7)\n' +
                               'unsafe free [0] *storage\nreturn 0\n}\n')

@@ -1,0 +1,17 @@
+// EXPECT: error[E0625]
+shape Counter(v: i32)
+
+impl Counter {
+    pub fn get(self) -> i32 { return self.v }
+    pub fn unwrap(self) -> i32 { return self.v }
+}
+
+shape Holder(*c: Counter)
+
+fn call_methods(*p: Counter, h: Holder) -> i32 {
+    return p.get() + (*p).get() + (h.*c).get() + (*p).unwrap()
+}
+
+fn main() -> i32 {
+    return 0
+}

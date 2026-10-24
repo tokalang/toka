@@ -1261,7 +1261,7 @@ def main():
 
     pos3_case = {
         "id": "pos3_cross_module_sourceless_tki_async_close",
-        "description": "Cross-module sourceless .tki (checked-local-v1) @AsyncClose trait impl, concrete & generic close_any consumption, and native execution",
+        "description": "Cross-module sourceless .tki (checked-local-v1-0201) @AsyncClose trait impl, concrete & generic close_any consumption, and native execution",
         "source": POS3_TKI_CONSUMER_SOURCE,
     }
     res_pos3 = verify_positive_case(

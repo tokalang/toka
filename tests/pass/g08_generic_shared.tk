@@ -81,12 +81,12 @@ impl<T> SharedPtr<T> {
     pub fn xdrop(self#) {
         println("enter .xdrop, shared_ptr:{} wrapper:{}", *self as OAddr, self.*wrapper as OAddr)
         // [Hat Rule]: (*ptr).member
-        unsafe self.wrapper.ref_count#.fetch_sub()
+        unsafe {
+            self.wrapper.ref_count#.fetch_sub()
 
-        println("try xdrop for addr {} with ref_count={}", self.wrapper.*data as OAddr, self.wrapper.ref_count.load())   
+            println("try xdrop for addr {} with ref_count={}", self.wrapper.*data as OAddr, self.wrapper.ref_count.load())   
 
-        if self.wrapper.ref_count.load() == 0 {   
-            unsafe {
+            if self.wrapper.ref_count.load() == 0 {   
                 println("drop---- wrapper:{} data:{} val={}", self.*wrapper as OAddr, self.wrapper.*data as OAddr, self.wrapper.data)
                 // 1. Free data first
                 // (*self.wrapper) -> get RcWrapper
@@ -96,10 +96,10 @@ impl<T> SharedPtr<T> {
                 // 2. Then free control block
                 unsafe free self.*wrapper
             }
-        }
-        else
-        {
-            println("xdrop for addr {} with ref_count={} NOT dropped", self.wrapper.*data as OAddr, self.wrapper.ref_count.load())
+            else
+            {
+                println("xdrop for addr {} with ref_count={} NOT dropped", self.wrapper.*data as OAddr, self.wrapper.ref_count.load())
+            }
         }
         
  

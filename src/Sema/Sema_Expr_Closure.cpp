@@ -300,6 +300,13 @@ std::shared_ptr<toka::Type> Sema::checkClosureExpr(ClosureExpr *Clo) {
     explicit ReturnSummaryClosureScope(unsigned &depth) : Depth(depth) { ++Depth; }
     ~ReturnSummaryClosureScope() { --Depth; }
   } summaryScope(m_CallableReturnClosureDepth);
+  const bool savedClosureInUnsafeContext = m_InUnsafeContext;
+  m_InUnsafeContext = false;
+  struct RestoreClosureUnsafeContext {
+    bool &Flag;
+    bool Saved;
+    ~RestoreClosureUnsafeContext() { Flag = Saved; }
+  } restoreClosureUnsafeContext{m_InUnsafeContext, savedClosureInUnsafeContext};
 
   auto fullLoc = DiagnosticEngine::SrcMgr && Clo->Loc.isValid()
                      ? DiagnosticEngine::SrcMgr->getFullSourceLoc(Clo->Loc)

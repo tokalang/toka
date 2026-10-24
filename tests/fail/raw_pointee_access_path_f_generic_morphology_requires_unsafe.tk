@@ -1,0 +1,12 @@
+// EXPECT: error[E0625]
+fn read_generic<T>(*p: T) -> T {
+    return p
+}
+
+fn main() -> i32 {
+    auto x = 42:i32
+    auto *p = *x
+    unsafe {
+        return read_generic<i32>(*p) - 42
+    }
+}

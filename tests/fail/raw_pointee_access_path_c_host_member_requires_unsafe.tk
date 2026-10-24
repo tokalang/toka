@@ -1,0 +1,23 @@
+// EXPECT: error[E0625]
+shape Node(
+    val#: i32,
+    ?#next: Node,
+    *slot: i32
+)
+
+fn touch_raw_host(*p#: Node, ?np: Node) -> i32 {
+    p.val = 1
+    auto ?n = p.?next
+    auto *s = p.*slot
+    auto _addr = *s as Addr
+    if ?n != null {
+        if ?np != null {
+            return np.val
+        }
+    }
+    return p.val
+}
+
+fn main() -> i32 {
+    return 0
+}

@@ -126,13 +126,13 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
       // Raw pointer payload access is an unsafe capability.  Handle-side #
       // remains identity-only and cannot manufacture it.
       bool rawDirectPointeeCapability =
-          m_InUnsafeContext && Info->TypeObj && Info->TypeObj->isRawPointer() &&
+          Info->TypeObj && Info->TypeObj->isRawPointer() &&
           Info->TypeObj->getPointeeType() &&
           Info->TypeObj->getPointeeType()->isRawPointer() &&
           Info->TypeObj->getPointeeType()->IsWritable &&
           !Info->TypeObj->getPointeeType()->IsBlocked;
       bool rawPayloadCapability =
-          m_InUnsafeContext && Info->TypeObj && Info->TypeObj->isRawPointer() &&
+          Info->TypeObj && Info->TypeObj->isRawPointer() &&
           Info->TypeObj->getPointeeType() && Info->TypeObj->getPointeeType()->IsWritable &&
           !Info->TypeObj->getPointeeType()->IsBlocked &&
           !Info->IsHandleRebindable();
@@ -299,7 +299,7 @@ AccessCapability Sema::getAccessCapability(Expr *E, bool declarationOnly) {
       // restricted direct source: deeper projections cannot recover P from
       // their own syntax or from a later field declaration.
       const bool rawDirectPointeeDeclared =
-          m_InUnsafeContext && fieldType && fieldType->isRawPointer() &&
+          fieldType && fieldType->isRawPointer() &&
           fieldType->getPointeeType() &&
           fieldType->getPointeeType()->isRawPointer() &&
           fieldType->getPointeeType()->IsWritable &&
@@ -1944,6 +1944,16 @@ Sema::MorphKind Sema::getSyntacticMorphology(Expr *E) {
     }
   }
 
+  // Indexing into an array of raw pointers (`[*T; N]` or `*[ *T; N ]`) or
+  // slicing yields a raw pointer element (`*T` / `?T`) without a surface `*`
+  // or `?` hat on the `ArrayIndexExpr` itself.
+  if (auto *Idx = dynamic_cast<ArrayIndexExpr *>(E)) {
+    if (!Idx->IsMorphicExempt && Idx->ResolvedType &&
+        Idx->ResolvedType->isRawPointer()) {
+      return MorphKind::Raw;
+    }
+  }
+
   // Safe Constructors (Exceptions)
   if (dynamic_cast<RawTakeExpr *>(E) ||
       dynamic_cast<CallExpr *>(E) || dynamic_cast<MethodCallExpr *>(E) ||
@@ -2876,14 +2886,37 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       auto selected = std::make_shared<GenericValueContract>(*Info.GenericContract);
       auto selectedType = current;
       unsigned depth = 0;
+      bool peeledRawLayer = false;
+      bool blockedByOuterNullableRaw = false;
       while (!selected->isWholeValue() && selected->Type && selectedType &&
              selected->Type->NodeKind == TypeSyntax::Kind::Morphology &&
              !selected->Type->IsPostfix && selectedType->getPointeeType()) {
+        if (selectedType->isRawPointer()) {
+          if (peeledRawLayer)
+            break;
+          if (selectedType->IsNullable && !hasActiveNonZeroFact(actualName)) {
+            blockedByOuterNullableRaw = true;
+            break;
+          }
+          peeledRawLayer = true;
+        } else if (selectedType->IsNullable && !m_InLHS) {
+          break;
+        }
         selected->Type = selected->Type->Subject;
         selectedType = selectedType->getPointeeType();
         ++depth;
       }
-      if (depth && selected->isWholeValue()) {
+      if (!blockedByOuterNullableRaw && depth && selected->isWholeValue()) {
+        if (peeledRawLayer && !m_InUnsafeContext) {
+          bool hasDeclaredWritePerm =
+              Info.IsSoulMutable() ||
+              (selectedType && selectedType->IsWritable &&
+               !selectedType->IsBlocked);
+          if (!m_InLHS || !m_IsAssignmentTarget || m_IsMemberBase ||
+              hasDeclaredWritePerm) {
+            error(ve, DiagID::ERR_RAW_POINTEE_ACCESS_REQUIRES_UNSAFE);
+          }
+        }
         ve->GenericContract = std::move(selected);
         ve->IsAbstractWholeValue = true;
         ve->GenericViewDepth = depth;
@@ -2911,11 +2944,22 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
         if (!outerNullable) {
           auto directPointee = current->getPointeeType();
           if (directPointee) {
+            bool hasDeclaredRawWritePermission =
+                directPointee->isRawPointer()
+                    ? (directPointee->IsWritable && !directPointee->IsBlocked)
+                    : (Info.IsSoulMutable() ||
+                       (Info.TypeObj && Info.TypeObj->isRawPointer() &&
+                        directPointee->IsWritable && !directPointee->IsBlocked &&
+                        !Info.IsHandleRebindable()));
+            if (!m_InUnsafeContext &&
+                (!m_InLHS || !m_IsAssignmentTarget || m_IsMemberBase ||
+                 hasDeclaredRawWritePermission)) {
+              error(ve, DiagID::ERR_RAW_POINTEE_ACCESS_REQUIRES_UNSAFE);
+            }
             current = directPointee;
             if (current->isRawPointer()) {
               bool layer1Writable =
-                  m_InUnsafeContext && current->IsWritable &&
-                  !current->IsBlocked;
+                  current->IsWritable && !current->IsBlocked;
               return current->withAttributes(
                   layer1Writable, current->IsNullable, current->IsBlocked);
             }
@@ -2945,9 +2989,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             Info.IsDeclaredVariable && !Info.IsFunctionParameter &&
             Info.Permission.Morphology == BindingMorphology::None &&
             Info.TypeObj && !Info.TypeObj->isPointer() &&
-            !Info.TypeObj->isSmartPointer() && !Info.TypeObj->isReference();
+            Info.TypeObj->isSmartPointer() == false &&
+            !Info.TypeObj->isReference();
         bool rawPayloadCapability =
-            m_InUnsafeContext && Info.TypeObj && Info.TypeObj->isRawPointer() &&
+            Info.TypeObj && Info.TypeObj->isRawPointer() &&
             Info.TypeObj->getPointeeType() && Info.TypeObj->getPointeeType()->IsWritable &&
             !Info.TypeObj->getPointeeType()->IsBlocked &&
             !Info.IsHandleRebindable();
@@ -3045,9 +3090,12 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       }
     }
 
+    const size_t diagBeforeCastExpr = DiagnosticEngine::records().size();
     auto srcType = Cast->Kind == CastKind::Ascription
                        ? checkExpr(Cast->Expression.get(), targetType)
                        : checkExpr(Cast->Expression.get());
+    const bool castExprHadDiag =
+        DiagnosticEngine::records().size() > diagBeforeCastExpr;
     if (Cast->RawWriteRequest && Cast->Kind == CastKind::Conversion &&
         targetType && targetType->isRawPointer() && targetType->getPointeeType()) {
       auto pointee = targetType->getPointeeType();
@@ -3136,6 +3184,10 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     } else if (targetType->isReference()) {
       // [Constitution 1.3] Borrow-Cast: var as &Node or var as &var
       // Re-interpreting identity as a direct borrow view.
+      if (srcType && srcType->isRawPointer() && !m_InUnsafeContext &&
+          !castExprHadDiag) {
+        error(Cast, DiagID::ERR_RAW_POINTEE_ACCESS_REQUIRES_UNSAFE);
+      }
       auto targetInner = targetType->getPointeeType();
       auto srcInner =
           (srcType->isPointer())
@@ -5880,6 +5932,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     bool oldAllow = m_AllowPermissionSuffix;
     bool oldDisableCollapse = m_DisableSoulCollapse;
     m_AllowPermissionSuffix = true; // [NEW] Grant suffix allowance for explicit method call objects
+    bool receiverIsNullableRawVar = false;
     if (Met->Method == "unwrap") {
       if (auto *varObj = dynamic_cast<VariableExpr *>(Met->Object.get())) {
         SymbolInfo *varInfo = nullptr;
@@ -5889,12 +5942,16 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             varInfo && varInfo->TypeObj && varInfo->TypeObj->isRawPointer() &&
             varInfo->TypeObj->IsNullable) {
           m_DisableSoulCollapse = true;
+          receiverIsNullableRawVar = true;
         }
       }
     }
+    const size_t diagBeforeObj = DiagnosticEngine::records().size();
     auto ObjTypeObj = Met->ObjectIsPrechecked && Met->Object->ResolvedType
                           ? Met->Object->ResolvedType
                           : checkExpr(Met->Object.get());
+    const bool objHadDiag =
+        DiagnosticEngine::records().size() > diagBeforeObj;
     m_DisableSoulCollapse = oldDisableCollapse;
     m_AllowPermissionSuffix = oldAllow;
 
@@ -5976,7 +6033,23 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
     };
 
     auto resolvedObjType = resolveType(ObjTypeObj);
-    if (Met->Method != "unwrap" && Met->Method != "unset" && resolvedObjType &&
+    bool isExplicitNullableRawSelector = false;
+    if (auto *uObj = dynamic_cast<UnaryExpr *>(Met->Object.get())) {
+      if (uObj->Op == TokenType::Star && uObj->HasNull)
+        isExplicitNullableRawSelector = true;
+    } else if (auto *mObj = dynamic_cast<MemberExpr *>(Met->Object.get())) {
+      MemberAccessIntent access = parseMemberAccess(mObj->Member);
+      if (!access.Prefix.empty() && access.Prefix[0] == '?')
+        isExplicitNullableRawSelector = true;
+    }
+    const bool isBuiltinNullableRawUnwrap =
+        Met->Method == "unwrap" && Met->Args.empty() &&
+        ((ObjTypeObj && ObjTypeObj->isRawPointer() && ObjTypeObj->IsNullable) ||
+         receiverIsNullableRawVar || isExplicitNullableRawSelector);
+    const bool isBuiltinUnset =
+        Met->Method == "unset" && Met->Args.empty() &&
+        (!resolvedObjType || !resolvedObjType->isRawPointer());
+    if (!isBuiltinNullableRawUnwrap && !isBuiltinUnset && resolvedObjType &&
         resolvedObjType->isRawPointer()) {
       const bool receiverCollapsedRawLayer =
           didReceiverCollapseRawLayer(Met->Object.get(), resolvedObjType);
@@ -6004,6 +6077,9 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
             return toka::Type::fromString("unknown");
           }
         } else {
+          if (!m_InUnsafeContext && !objHadDiag) {
+            error(Met, DiagID::ERR_RAW_POINTEE_ACCESS_REQUIRES_UNSAFE);
+          }
           resolvedObjType = peeled;
         }
       }
@@ -7604,7 +7680,7 @@ std::shared_ptr<toka::Type> Sema::checkExprImpl(Expr *E) {
       return ObjTypeObj;
     }
     if (Met->Method == "unwrap" && ObjTypeObj &&
-        (ObjTypeObj->IsNullable || ObjTypeObj->isRawPointer())) {
+        (ObjTypeObj->IsNullable || isBuiltinNullableRawUnwrap)) {
       return ObjTypeObj->withAttributes(ObjTypeObj->IsWritable, false);
     }
 

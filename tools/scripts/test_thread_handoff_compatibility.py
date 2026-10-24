@@ -33,7 +33,7 @@ def main():
                        (ROOT / "include/toka/InterfaceVersion.h").read_text()).group(1)
     # Executable interface bodies extend compiler/cache policy, not the v1
     # native layout or handoff protocol. Keep stale-cache rejection.
-    require(version == "0.20.0-1", "compiler interface migration must be qualified")
+    require(version == "0.20.1-1", "compiler interface migration must be qualified")
     env = dict(os.environ, TOKA_LIB=str(ROOT / "lib"))
 
     with tempfile.TemporaryDirectory(prefix="toka-thread-version-") as directory:

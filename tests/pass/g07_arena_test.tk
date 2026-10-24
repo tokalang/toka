@@ -32,12 +32,14 @@ fn main() -> i32 {
     assert((*p_ptr as Addr) != ADDR0, "p_ptr should be valid")
     
     // Write data to the pointer
-    p_ptr.x = 100
-    p_ptr.y = 200
-    
-    println("Point values: x={}, y={}", p_ptr.x, p_ptr.y)
-    assert(p_ptr.x == 100, "x should be 100")
-    assert(p_ptr.y == 200, "y should be 200")
+    unsafe {
+        p_ptr.x = 100
+        p_ptr.y = 200
+
+        println("Point values: x={}, y={}", p_ptr.x, p_ptr.y)
+        assert(p_ptr.x == 100, "x should be 100")
+        assert(p_ptr.y == 200, "y should be 200")
+    }
 
     // 3. Test alloc_array
     println("Testing alloc_array...")

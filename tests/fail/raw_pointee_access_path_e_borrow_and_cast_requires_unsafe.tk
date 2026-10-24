@@ -1,0 +1,11 @@
+// EXPECT: error[E0625]
+fn make_refs(*p: i32) -> i32 {
+    auto &r1 = &p
+    auto &r2 = &(*p)
+    auto &r3 = (*p) as &i32
+    return r1 + r2 + r3
+}
+
+fn main() -> i32 {
+    return 0
+}

@@ -1,0 +1,19 @@
+// EXPECT: error[E0625]
+shape Boxed(
+    *p#: i32,
+    *?pq: i32
+)
+
+fn read_box(b#: Boxed) -> i32 {
+    b.p = 99
+    auto ?inner = b.pq
+    auto &r = &b
+    if ?inner != null {
+        return r.p
+    }
+    return b.p + r.p
+}
+
+fn main() -> i32 {
+    return 0
+}

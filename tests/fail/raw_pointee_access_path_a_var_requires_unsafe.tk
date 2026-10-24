@@ -1,0 +1,25 @@
+// EXPECT: error[E0625]
+fn read_param(*p: i32) -> i32 {
+    return p
+}
+
+fn write_param(*out#: i32) {
+    out = 42
+}
+
+fn peel_outer(*?pq: i32) -> ?i32 {
+    auto ?inner = pq
+    return ?inner
+}
+
+fn narrowed_rw(?p#: i32) -> i32 {
+    if ?p != null {
+        p = 7
+        return p
+    }
+    return 0
+}
+
+fn main() -> i32 {
+    return 0
+}

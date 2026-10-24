@@ -1955,13 +1955,13 @@ def valid_candidate_020(revision, label, target):
             'epoch018_interface_command': epoch018_iface_cmd,
         },
         'negative_controls': {
-            'total': 12,
-            'passed': 12,
+            'total': 16,
+            'passed': 16,
             'modes': ['--check-only', '-c', '--emit-llvm'],
         },
         'positive_controls': {
-            'total': 3,
-            'passed': 3,
+            'total': 4,
+            'passed': 4,
             'native_rc0': True,
         },
         'tokafmt_idempotence': {
@@ -1984,8 +1984,8 @@ def valid_candidate_020(revision, label, target):
             'groups': {
                 'version': 4,
                 'source_hidden_tki': 6,
-                'negative_controls': 36,
-                'positive_controls': 15,
+                'negative_controls': 48,
+                'positive_controls': 20,
                 'tokafmt_idempotence': 2,
                 'visibility_matrix': 1,
                 'compositional_convergence': 1,

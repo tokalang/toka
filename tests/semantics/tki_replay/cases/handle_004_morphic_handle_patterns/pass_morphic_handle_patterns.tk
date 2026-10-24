@@ -42,19 +42,25 @@ fn main() -> i32 {
     auto *raw_exact_ptr = *raw_exact_value as *Item<i32>
     auto raw_exact = Carrier<*Item<i32>>::Value(*raw_exact_ptr)
     auto *raw_result = raw_exact.unsafe_exact()
-    assert(raw_result.val == 93, "raw exact transport failed")
+    unsafe {
+        assert(raw_result.val == 93, "raw exact transport failed")
+    }
 
     auto raw_field_value# = Item<i32>(val = 94)
     auto *raw_field_ptr = *raw_field_value as *Item<i32>
     auto raw_field = Carrier<*Item<i32>>::Value(*raw_field_ptr)
     auto *raw_field_result = raw_field.unsafe_exact()
-    assert(raw_field_result.val == 94, "raw field projection failed")
+    unsafe {
+        assert(raw_field_result.val == 94, "raw field projection failed")
+    }
 
     auto raw_method_value# = Item<i32>(val = 95)
     auto *raw_method_ptr = *raw_method_value as *Item<i32>
     auto raw_method = Carrier<*Item<i32>>::Value(*raw_method_ptr)
     auto *raw_method_result = raw_method.unsafe_exact()
-    assert(raw_method_result.read() == 95, "raw method projection failed")
+    unsafe {
+        assert(raw_method_result.read() == 95, "raw method projection failed")
+    }
 
     auto ref_exact_value = Item<i32>(val = 103)
     auto ref_exact = Carrier<&Item<i32>>::Value(&ref_exact_value)

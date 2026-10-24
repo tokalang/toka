@@ -131,8 +131,10 @@ shape FramedStreamCancelGuard<T> (
 impl<T> FramedStreamCancelGuard<T>@Encap {
     fn drop(self#) {
         if self.active {
-            auto *f# = unsafe (self.framed_addr as *FramedStream<T>#)
-            f#.close()
+            unsafe {
+                auto *f# = self.framed_addr as *FramedStream<T>#
+                f#.close()
+            }
         }
     }
 }
@@ -548,8 +550,10 @@ shape FramedReaderCancelGuard<T> (
 impl<T> FramedReaderCancelGuard<T>@Encap {
     fn drop(self#) {
         if self.active {
-            auto *f# = unsafe (self.reader_addr as *FramedReader<T>#)
-            f#.close()
+            unsafe {
+                auto *f# = self.reader_addr as *FramedReader<T>#
+                f#.close()
+            }
         }
     }
 }
@@ -808,8 +812,10 @@ shape FramedWriterCancelGuard<T> (
 impl<T> FramedWriterCancelGuard<T>@Encap {
     fn drop(self#) {
         if self.active {
-            auto *f# = unsafe (self.writer_addr as *FramedWriter<T>#)
-            f#.close()
+            unsafe {
+                auto *f# = self.writer_addr as *FramedWriter<T>#
+                f#.close()
+            }
         }
     }
 }

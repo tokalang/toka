@@ -32,7 +32,9 @@ impl Point@ToFormat {
 
 // Runtime helper hooks used by string formatting and cleanup.
 pub fn String_c_str(*s: string) -> *char {
-    return s.c_str()
+    unsafe {
+        return s.c_str()
+    }
 }
 
 pub fn Encap_String_drop(*s: string) {

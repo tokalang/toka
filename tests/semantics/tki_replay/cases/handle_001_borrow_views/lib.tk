@@ -47,7 +47,7 @@ pub fn pass_shared_option(x: Option<~Item>) -> bool {
 
 pub fn pass_raw_option(x: Option<*Item>) -> bool {
     match x {
-        auto Some(*val) => return val.val == 70
+        auto Some(*val) => unsafe { return val.val == 70 }
         auto None => return false
     }
 }

@@ -26,8 +26,10 @@ fn main() -> i32 {
     auto raw_second = RepeatCarrier<*Item<i32>>::Value(*transported_raw)
     auto *raw_a = raw_first.unsafe_exact()
     auto *raw_b = raw_second.unsafe_exact()
-    assert(raw_a.val == 123 && raw_b.val == 123,
-           "raw repeated transport must copy identity")
+    unsafe {
+        assert(raw_a.val == 123 && raw_b.val == 123,
+               "raw repeated transport must copy identity")
+    }
 
     auto ref_item = Item<i32>(val = 124)
     auto ref_carrier = RepeatCarrier<&Item<i32>>::Value(&ref_item)

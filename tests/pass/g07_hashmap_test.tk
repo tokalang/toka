@@ -26,8 +26,10 @@ fn main() -> i32 {
         match res {
             auto MapResult<i32,i32>::Some(entry) => {
                 count += 1
-                sum_k += entry.key
-                sum_v += entry.val
+                unsafe {
+                    sum_k += entry.key
+                    sum_v += entry.val
+                }
             }
             auto MapResult<i32,i32>::None => {
                 break

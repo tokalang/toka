@@ -32,8 +32,8 @@ fn consume_data(~p: Data) {
 }
 
 fn consume_data_raw(*p: Data) {
-    println("consume_data_raw data, addr:{} p.id:{}", *p as Addr, p.id)
-    assert(p.id == 303, "consume_data received value id mismatch")
+    println("consume_data_raw data, addr:{} p.id:{}", *p as Addr, unsafe (p.id))
+    assert(unsafe (p.id == 303), "consume_data received value id mismatch")
 }
 
 fn main() -> i32 {
@@ -41,8 +41,8 @@ fn main() -> i32 {
 
     auto *p0 = unsafe alloc Data(id = 303)
     consume_data_raw(*p0)
-    println("After consume_data_raw, p0.id={}", p0.id)
-    assert(p0.id == 303, "Original p0 was freed prematurely")
+    println("After consume_data_raw, p0.id={}", unsafe (p0.id))
+    assert(unsafe (p0.id == 303), "Original p0 was freed prematurely")
     unsafe free *p0
 
     // Test Point 2: Passing as an argument should not prematurely free the original reference

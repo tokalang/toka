@@ -719,18 +719,27 @@ void Sema::instantiateGenericImpl(
 
   // Now Check it!
   // This will check method bodies with isolated expression state
+  bool oldInUnsafe = m_InUnsafeContext;
   bool oldIntermediate = m_InIntermediatePath;
   bool oldMemberBase = m_IsMemberBase;
   bool oldInLHS = m_InLHS;
+  bool oldIsAssignmentTarget = m_IsAssignmentTarget;
+  bool oldDisableCollapse = m_DisableSoulCollapse;
+  m_InUnsafeContext = false;
   m_InIntermediatePath = false;
   m_IsMemberBase = false;
   m_InLHS = false;
+  m_IsAssignmentTarget = false;
+  m_DisableSoulCollapse = false;
 
   checkImpl(RawPtr);
 
+  m_DisableSoulCollapse = oldDisableCollapse;
+  m_IsAssignmentTarget = oldIsAssignmentTarget;
   m_InIntermediatePath = oldIntermediate;
   m_IsMemberBase = oldMemberBase;
   m_InLHS = oldInLHS;
+  m_InUnsafeContext = oldInUnsafe;
   exitScope();
 
   // Done.

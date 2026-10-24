@@ -752,6 +752,12 @@
       "message": "Morphology bound '{}' requires morphic generic parameter {}",
       "description": "Morphology constraints apply only to morphic generic parameters."
     },
+    "E0625": {
+      "id": "ERR_RAW_POINTEE_ACCESS_REQUIRES_UNSAFE",
+      "level": "Error",
+      "message": "Raw pointer pointee access requires an unsafe context",
+      "description": "Raw pointer pointee access requires an unsafe context"
+    },
     "E0101": {
       "id": "ERR_EXPECTED_SEMI",
       "level": "Error",

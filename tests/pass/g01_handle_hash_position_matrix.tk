@@ -7,13 +7,17 @@ fn raw_identity_rebind() -> i32 {
     auto b# = 20
     auto *#p = *#a:*i32
 
-    if p != 10 {
-        return 1
+    unsafe {
+        if p != 10 {
+            return 1
+        }
     }
 
     *#p = *#b
-    if p != 20 {
-        return 2
+    unsafe {
+        if p != 20 {
+            return 2
+        }
     }
 
     return 0

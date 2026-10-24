@@ -3,7 +3,9 @@
 // handle-authority transfer (previously rejected as a capability mismatch).
 fn store(*out#: u64) {
     auto value = 123:u64
-    out = value
+    unsafe {
+        out = value
+    }
 }
 
 pub fn main() -> i32 {

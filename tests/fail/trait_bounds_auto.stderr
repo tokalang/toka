@@ -8,6 +8,11 @@ error[E0606]: Type 'UnsafeData' does not satisfy trait bound '@Send' for generic
     |
  16 |     process_send<UnsafeData>(u2)
     |     ^
+error[E0625]: Raw pointer pointee access requires an unsafe context
+ --> tests/fail/trait_bounds_auto.tk:8:81
+   |
+ 8 |     pub fn clone(self) -> ^UnsafeData { return new UnsafeData(value=0, *ptr=self.ptr) }
+   |                                                                                 ^
 error[E0422]: Type mismatch for member '*ptr': expected '*i32', but got 'i32$'
  --> tests/fail/trait_bounds_auto.tk:8:52
    |

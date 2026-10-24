@@ -197,6 +197,11 @@ jobs:
           set -euo pipefail
           ctest --test-dir build --output-on-failure -R "^toka_019_encap_visibility$"
 
+      - name: Run 0.20.1 raw pointer unsafe gate
+        run: |
+          set -euo pipefail
+          ctest --test-dir build --output-on-failure -R "^toka_raw_pointer_unsafe_0201$"
+
       - name: Run G2 framed transport directed gate
         run: |
           set -euo pipefail

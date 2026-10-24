@@ -354,6 +354,7 @@ DIAG(ERR_MORPHOLOGY_BOUND_UNSATISFIED, Error, "E0621", "Type '{}' does not satis
 DIAG(ERR_MORPHOLOGY_BOUND_REQUIRES_MORPHIC, Error, "E0622", "Morphology bound '{}' requires morphic generic parameter {}")
 DIAG(ERR_UNSAFE_CALL_REQUIRES_CONTEXT, Error, "E0623", "Call to unsafe function '{}' requires an unsafe context")
 DIAG(ERR_UNSAFE_TRAIT_METHOD_UNSUPPORTED, Error, "E0624", "Unsafe trait methods are not supported")
+DIAG(ERR_RAW_POINTEE_ACCESS_REQUIRES_UNSAFE, Error, "E0625", "Raw pointer pointee access requires an unsafe context")
 DIAG(ERR_NONZERO_RAW_NULL_FLOW, Error, "E0483", "Plain raw pointer type '{}' cannot contain or test null; use '?T' for a may-zero raw address")
 DIAG(ERR_SAFE_NULLABLE_PAYLOAD_REMOVED, Error, "E0484", "Safe nullable payload syntax '{}' has been removed; use Init, 'T | miss', Option<T>, or an explicit domain state")
 DIAG(ERR_SAFE_NULLABLE_HANDLE_REMOVED, Error, "E0485", "Safe nullable handle syntax '{}' has been removed; '^T' and '~T' must designate valid objects, while physical null requires '?T'")

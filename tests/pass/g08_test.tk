@@ -139,7 +139,7 @@ fn main() -> i32 {
     {
         println("Testing Raw pointer...")
         auto *ptr = unsafe alloc Point(x=999, y=111, z=0)
-        println("[{}]Raw Heap Point: ptr.x={}, address={}", logi++, ptr.x, *ptr as OAddr)
+        println("[{}]Raw Heap Point: ptr.x={}, address={}", logi++, unsafe (ptr.x), *ptr as OAddr)
         del *ptr
     }
 

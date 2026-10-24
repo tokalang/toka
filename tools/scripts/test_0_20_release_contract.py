@@ -28,6 +28,7 @@ class Contract020(unittest.TestCase):
         self.assertEqual(policy.core_targets('v0.18.1'), policy.CORE)
         self.assertEqual(policy.core_targets('v0.19.0'), policy.CORE)
         self.assertEqual(policy.core_targets('v0.20.0'), policy.CORE)
+        self.assertEqual(policy.core_targets('v0.20.1'), policy.CORE)
         for tag in ('v0.20.00', 'v0.20.01', 'v0.20.0-rc.1', 'v0.21.0', 'v1.0.0'):
             self.assertIsNone(promotion.TAG.fullmatch(tag))
         self.assertEqual(policy.policy_id('v0.12.0'), 'toka.release-platforms.0.12.v1')
@@ -42,6 +43,7 @@ class Contract020(unittest.TestCase):
         self.assertEqual(policy.policy_id('v0.18.1'), 'toka.release-platforms.0.18.v1')
         self.assertEqual(policy.policy_id('v0.19.0'), 'toka.release-platforms.0.19.v1')
         self.assertEqual(policy.policy_id('v0.20.0'), 'toka.release-platforms.0.20.v1')
+        self.assertEqual(policy.policy_id('v0.20.1'), 'toka.release-platforms.0.20.v1')
 
     def test_installed_protocol_020_across_release_chain(self):
         old = cases.TAG
@@ -112,7 +114,7 @@ class Contract020(unittest.TestCase):
                     ('bad_consumed_obj_sha', lambda p: p['source_hidden_tki'].update(consumed_object_sha256='0'*64)),
                     ('garbage_receipt', lambda p: p.update(receipts=[{'garbage': True}])),
                     ('missing_receipt', lambda p: p['receipts'].pop()),
-                    ('bad_neg_exit_code', lambda p: p['receipts'][-20].update(exit_code=0)),
+                    ('bad_neg_exit_code', lambda p: p['receipts'][-25].update(exit_code=0)),
                     ('bad_missing_iface_cmd', lambda p: p['source_hidden_tki'].pop('missing_interface_command')),
                     ('bad_missing_iface_cmd_exit', lambda p: p['source_hidden_tki']['missing_interface_command'].update(exit_code=0)),
                     ('bad_corrupt_iface_cmd', lambda p: p['source_hidden_tki'].pop('corrupt_interface_command')),

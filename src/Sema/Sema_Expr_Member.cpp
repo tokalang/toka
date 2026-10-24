@@ -124,7 +124,9 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   Memb->Object = foldGenericConstant(std::move(Memb->Object)); // [Phase 2]
   if (startSyntax)
     m_StartBoundaryRoot = Memb->Object.get();
+  const size_t diagBeforeObj = DiagnosticEngine::records().size();
   objTypeObj = checkExpr(Memb->Object.get());
+  bool hostHadDiag = DiagnosticEngine::records().size() > diagBeforeObj;
   m_IsMemberBase = savedMemberBase;
   m_DisableSoulCollapse = savedDisable;
   m_InIntermediatePath = oldIntermediate;
@@ -271,11 +273,21 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
   // proof. Moreover, '.' on a raw pointer base peels at most ONE raw pointer
   // layer; multi-layer raw pointers (*?p, ??p, **p) cannot implicitly peel
   // multiple layers to reach a struct soul.
+  while (objTypeObj &&
+         (objTypeObj->isReference() || objTypeObj->isSmartPointer())) {
+    if (objTypeObj->IsNullable && !m_InLHS)
+      break;
+    auto inner = objTypeObj->getPointeeType();
+    if (!inner)
+      break;
+    objTypeObj = inner;
+  }
   if (objTypeObj->IsNullable) {
     DiagnosticEngine::report(getLoc(Memb), DiagID::ERR_MAY_ZERO_RAW_ACCESS,
                              objTypeObj->toString());
     HasError = true;
     objTypeObj = objTypeObj->getSoulType();
+    hostHadDiag = true;
   } else if (objTypeObj->isRawPointer()) {
     objTypeObj = objTypeObj->getPointeeType();
     if (objTypeObj && objTypeObj->isRawPointer()) {
@@ -284,11 +296,15 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
                                  objTypeObj->toString());
         HasError = true;
         objTypeObj = objTypeObj->getSoulType();
+        hostHadDiag = true;
       } else {
         error(Memb, DiagID::ERR_NOT_A_STRUCT, Memb->Member,
               objTypeObj->toString());
         return toka::Type::fromString("unknown");
       }
+    } else if (!m_InUnsafeContext && !hostHadDiag) {
+      error(Memb, DiagID::ERR_RAW_POINTEE_ACCESS_REQUIRES_UNSAFE);
+      hostHadDiag = true;
     }
   } else if (objTypeObj->isPointer() || objTypeObj->isSmartPointer()) {
     objTypeObj = objTypeObj->getSoulType();
@@ -487,18 +503,26 @@ std::shared_ptr<toka::Type> Sema::checkMemberExpr(MemberExpr *Memb) {
               return fieldType->withAttributes(false, true, fieldType->IsBlocked);
             }
             auto directPointee = fieldType->getPointeeType();
+            bool hasDeclaredRawFieldWritePermission =
+                (directPointee && directPointee->isRawPointer())
+                    ? (directPointee->IsWritable && !directPointee->IsBlocked)
+                    : finalSoulWritable;
+            if (!m_InUnsafeContext && !hostHadDiag &&
+                (!m_InLHS || !m_IsAssignmentTarget || m_IsMemberBase ||
+                 hasDeclaredRawFieldWritePermission)) {
+              error(Memb, DiagID::ERR_RAW_POINTEE_ACCESS_REQUIRES_UNSAFE);
+            }
             if (directPointee && directPointee->isRawPointer()) {
               bool layer1Writable =
-                  m_InUnsafeContext && directPointee->IsWritable &&
-                  !directPointee->IsBlocked;
+                  directPointee->IsWritable && !directPointee->IsBlocked;
               return directPointee->withAttributes(
                   layer1Writable, directPointee->IsNullable,
                   directPointee->IsBlocked);
             }
             if (directPointee) {
               auto collapsed = directPointee->withAttributes(
-                  m_InUnsafeContext && finalSoulWritable,
-                  directPointee->IsNullable, finalSoulBlocked);
+                  finalSoulWritable, directPointee->IsNullable,
+                  finalSoulBlocked);
               if (!isBorrowLikeType(collapsed)) {
                 m_LastFieldDependencies.clear();
               }

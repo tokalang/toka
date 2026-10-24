@@ -3,6 +3,11 @@ error[E0492]: Illegal mixing of managed handles and raw pointers in type '*&i32'
    |
  2 |     auto y = x as *&i32
    |                ^
+error[E0625]: Raw pointer pointee access requires an unsafe context
+ --> tests/fail/handle_grammar_cast_illegal.tk:2:14
+   |
+ 2 |     auto y = x as *&i32
+   |              ^
 error[E0450]: Invalid cast: cannot convert 'void' to '*&i32' via 'as'; only 'Addr' and '*' conversions are supported
  --> tests/fail/handle_grammar_cast_illegal.tk:2:16
    |

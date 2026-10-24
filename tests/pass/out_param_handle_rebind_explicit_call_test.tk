@@ -13,7 +13,9 @@
 // rejection for a call that omits the request.
 fn replace(*#out#: u64, *other#: u64) {
     *out = *other
-    out = 99:u64
+    unsafe {
+        out = 99:u64
+    }
 }
 
 pub fn main() -> i32 {
@@ -24,6 +26,8 @@ pub fn main() -> i32 {
     replace(*#p, *q)
     if a != 1:u64 { return 1 }
     if b != 99:u64 { return 2 }
-    if p != 99:u64 { return 3 }
+    unsafe {
+        if p != 99:u64 { return 3 }
+    }
     return 0
 }

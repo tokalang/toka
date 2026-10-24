@@ -13,14 +13,18 @@ fn main() -> i32 {
     if ?pending is null { return 1 }
     auto *point# = pending.unwrap()
     // Allocation supplies storage only: initialize both fields before reading.
-    point.x = 11
-    point.y = 22
-    assert(point.x == 11 && point.y == 22, "split nullable binding retains permissions")
+    unsafe {
+        point.x = 11
+        point.y = 22
+        assert(point.x == 11 && point.y == 22, "split nullable binding retains permissions")
+    }
     auto *other# = forwarded(arena#).unwrap()
-    other.x = 33
-    other.y = 44
-    assert(other.x == 33 && other.y == 44, "forwarded return retains permissions")
-    assert(point.x == 11 && point.y == 22, "second allocation preserves first storage")
+    unsafe {
+        other.x = 33
+        other.y = 44
+        assert(other.x == 33 && other.y == 44, "forwarded return retains permissions")
+        assert(point.x == 11 && point.y == 22, "second allocation preserves first storage")
+    }
     arena#.release()
     return 0
 }

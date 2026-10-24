@@ -3107,8 +3107,11 @@ void Sema::checkStmt(Stmt *S) {
       if (!m_LastBorrowSource.empty()) {
           AccessPath borrowPath =
               canonicalizeAccessPath(makeAccessPath(m_LastBorrowSource));
+          const Expr *unwrappedInit = Var->Init.get();
+          while (auto *u = dynamic_cast<const UnsafeExpr *>(unwrappedInit))
+            unwrappedInit = u->Expression.get();
           if (auto *borrowExpr =
-                  dynamic_cast<UnaryExpr *>(Var->Init.get());
+                  dynamic_cast<const UnaryExpr *>(unwrappedInit);
               borrowExpr && borrowExpr->Op == TokenType::Ampersand) {
             borrowPath = canonicalizeAccessPath(
                 makeAccessPath(borrowExpr->RHS.get()));

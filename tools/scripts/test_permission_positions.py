@@ -24,7 +24,7 @@ ILLEGAL = {
     'blocked': 'alias Bad = i32$',
 }
 LEGAL = {
-    'named': 'fn put(*#out#:i32) { out = 1 }',
+    'named': 'fn put(*#out#:i32) { unsafe { out = 1 } }',
     'return': 'extern fn result() -> *i32#',
     'function_return': 'alias Callback = fn(i32) -> *i32#',
     'callable_receiver': 'alias Callback = fn#(i32) -> i32',

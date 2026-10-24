@@ -2089,7 +2089,7 @@ def expected_019_script_sha256():
     return None
 
 
-EXPECTED_020_FIXTURES_DIGEST = '13e6752675845a1d9a4deec6b01e1fd33152010c4a5755694634fe85dd2912dc'
+EXPECTED_020_FIXTURES_DIGEST = '8c0e110d94ce9cc905bbd6b6b3b717444cbeba3febff8e676629db304c6002b0'
 
 
 def expected_020_script_sha256():
@@ -3584,11 +3584,16 @@ NEG_020_CASES = [
     ('neg10_unwrap_does_not_narrow_source_var', 'E04606'),
     ('neg11_mixed_raw_managed_multilayer_rejected', 'E0495'),
     ('neg12_cross_module_private_field_via_tki020', 'E0418'),
+    ('neg13_raw_pointee_bare_read_requires_unsafe', 'E0625'),
+    ('neg14_raw_pointee_write_and_compound_assign_requires_unsafe', 'E0625'),
+    ('neg15_raw_pointee_access_path_and_call_requires_unsafe', 'E0625'),
+    ('neg16_sourceless_tki_generic_raw_pointee_requires_unsafe', 'E0625'),
 ]
 
 POS_020_CASES = [
     'pos1_raw_hats_2layer_and_3layer_matrix',
     'pos2_nonzero_fact_narrowing_and_rebind',
+    'pos4_raw_pointee_unsafe_and_safe_handle_matrix',
     'pos3_cross_module_sourceless_tki_020_consumer',
 ]
 
@@ -3804,16 +3809,16 @@ def candidate_020_receipt_errors(receipt, revision, label, target=None):
                 errors.append(f'0.20 tool version mismatch for {tool}: {v_str}')
 
     neg = receipt.get('negative_controls')
-    if not isinstance(neg, dict) or type(neg.get('total')) is not int or type(neg.get('passed')) is not int or neg.get('total') != 12 or neg.get('passed') != 12:
-        errors.append('0.20 negative_controls must be dict with total=12 and passed=12')
+    if not isinstance(neg, dict) or type(neg.get('total')) is not int or type(neg.get('passed')) is not int or neg.get('total') != 16 or neg.get('passed') != 16:
+        errors.append('0.20 negative_controls must be dict with total=16 and passed=16')
     else:
         neg_modes = neg.get('modes')
         if not isinstance(neg_modes, list) or neg_modes != ['--check-only', '-c', '--emit-llvm']:
             errors.append('0.20 negative_controls modes must be exactly [--check-only, -c, --emit-llvm]')
 
     pos = receipt.get('positive_controls')
-    if not isinstance(pos, dict) or type(pos.get('total')) is not int or type(pos.get('passed')) is not int or pos.get('total') != 3 or pos.get('passed') != 3 or pos.get('native_rc0') is not True:
-        errors.append('0.20 positive_controls must be dict with total=3, passed=3, and native_rc0=True')
+    if not isinstance(pos, dict) or type(pos.get('total')) is not int or type(pos.get('passed')) is not int or pos.get('total') != 4 or pos.get('passed') != 4 or pos.get('native_rc0') is not True:
+        errors.append('0.20 positive_controls must be dict with total=4, passed=4, and native_rc0=True')
 
     fmt_idem = receipt.get('tokafmt_idempotence')
     if not isinstance(fmt_idem, dict) or type(fmt_idem.get('passes')) is not int or fmt_idem.get('passes') != 2 or \
@@ -3832,8 +3837,8 @@ def candidate_020_receipt_errors(receipt, revision, label, target=None):
     expected_counts_groups = {
         'version': 4,
         'source_hidden_tki': 6,
-        'negative_controls': 36,
-        'positive_controls': 15,
+        'negative_controls': 48,
+        'positive_controls': 20,
         'tokafmt_idempotence': 2,
         'visibility_matrix': 1,
         'compositional_convergence': 1,
@@ -3843,8 +3848,8 @@ def candidate_020_receipt_errors(receipt, revision, label, target=None):
         errors.append('0.20 counts missing or not a dict')
     else:
         if type(counts.get('total_receipts')) is not int or type(counts.get('passed')) is not int or type(counts.get('failed')) is not int or \
-                counts.get('total_receipts') != 65 or counts.get('passed') != 65 or counts.get('failed') != 0:
-            errors.append('0.20 counts values mismatch: expected total 65, passed 65, failed 0')
+                counts.get('total_receipts') != 82 or counts.get('passed') != 82 or counts.get('failed') != 0:
+            errors.append('0.20 counts values mismatch: expected total 82, passed 82, failed 0')
         if counts.get('groups') != expected_counts_groups:
             errors.append('0.20 counts groups mismatch or invalid')
 

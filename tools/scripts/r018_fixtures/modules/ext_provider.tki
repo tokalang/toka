@@ -1,5 +1,5 @@
 // @meta compiler_version: any
-// @meta local_body_policy: checked-local-v1
+// @meta local_body_policy: checked-local-v1-0201
 // @meta local_body_definitions: f/0,f/1,f/2,f/3
 // @meta format_version: 7
 // @meta language_epoch: 0.20

@@ -294,7 +294,10 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
       dynamic_cast<NumberExpr *>(Unary->RHS.get())) {
     m_CheckingNegativeIntegerLiteral = true;
   }
+  const size_t diagBeforeRHS = DiagnosticEngine::records().size();
   auto rhsType = checkExpr(Unary->RHS.get());
+  const bool rhsHadDiag =
+      DiagnosticEngine::records().size() > diagBeforeRHS;
   m_BorrowingSelectedHandle = savedBorrowingSelectedHandle;
   m_AllowPermissionSuffix = savedAllowPermissionSuffix;
   m_CheckingNegativeIntegerLiteral = savedNegativeLiteral;
@@ -552,6 +555,9 @@ std::shared_ptr<toka::Type> Sema::checkUnaryExpr(UnaryExpr *Unary) {
   std::shared_ptr<toka::Type> inner = rhsType;
   if (Unary->Op == TokenType::Ampersand && !borrowsSelectedHandle &&
       !Unary->RHS->IsAbstractWholeValue && inner) {
+    if (inner->isRawPointer() && !m_InUnsafeContext && !rhsHadDiag) {
+      error(Unary, DiagID::ERR_RAW_POINTEE_ACCESS_REQUIRES_UNSAFE);
+    }
     auto soul = inner->getSoulType();
     if (soul) {
       inner = soul->withAttributes(m_ExpectedWritability, soul->IsNullable,

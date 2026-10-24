@@ -45,7 +45,7 @@ def main():
             (work/'lib.tk').write_text(source)
             run([tokac, '-c', '--emit-interface', 'lib.tk', '-o', 'lib.o'])
             interface = (work/'lib.tki').read_text()
-            assert 'local_body_policy: checked-local-v1' in interface, interface
+            assert 'local_body_policy: checked-local-v1-0201' in interface, interface
             (work/'lib.tk').unlink()
             return interface
 
@@ -88,7 +88,7 @@ pub fn make() -> fn(i32) -> i32 {
 
         write_interface(re.sub(r'^// @meta local_body_(policy|definitions):.*\n', '', original, flags=re.M))
         check(consumer, 1, 'E04661')
-        write_interface(original.replace('checked-local-v1', 'checked-local-unsupported'))
+        write_interface(original.replace('checked-local-v1-0201', 'checked-local-unsupported'))
         check(consumer, 1, 'E0901')
         current_version = re.search(
             r'(?m)^// @meta compiler_version: ([^\n]+)$', original).group(1)

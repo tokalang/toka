@@ -4,7 +4,7 @@
 Verifies under default 0.20 compiler entry (language_epoch: 0.20, encap_epoch: 0.19):
 - Four tool versions (tokac, toka, tokafmt, tokalsp) against release label
 - Source-hidden .tki provider compilation (Format 7, language_epoch: 0.20,
-  encap_epoch: 0.19, compiler_version: 0.20.0-1), source deletion,
+  encap_epoch: 0.19, compiler_version: 0.20.1-1), source deletion,
   missing/corrupt/format6/lang019/epoch018 rejection (E0901), and native
   sourceless consumer execution rc == 0
 - 12 negative probes across 3 compiler modes (--check-only, -c, --emit-llvm)
@@ -98,6 +98,16 @@ impl RawChainBox {
 
 pub fn unsafe_rebind_nullable_slot(?#slot: i32, ?next: i32) {
     ?#slot = ?next
+}
+
+pub fn unsafe_bad_generic_raw_peel<T>(*p: T) -> T {
+    return p
+}
+
+pub fn unsafe_generic_peel<T>(*p: T) -> T {
+    unsafe {
+        return p
+    }
 }
 """
 
@@ -312,7 +322,7 @@ fn main() -> i32 {
 """
 
 POS3_TKI_020_CONSUMER_SOURCE = """\
-import raw_hats_020_provider::{RawChainBox, unsafe_rebind_nullable_slot}
+import raw_hats_020_provider::{RawChainBox, unsafe_rebind_nullable_slot, unsafe_generic_peel}
 
 fn main() -> i32 {
     auto a# = 10:i32
@@ -340,6 +350,9 @@ fn main() -> i32 {
         unsafe_rebind_nullable_slot(box.?#rebind_q, null)
         if box.sum_all() != 105 {
             return 2
+        }
+        if unsafe_generic_peel(*pa) != 10 {
+            return 3
         }
     }
     return 0
@@ -588,7 +601,154 @@ fn main() -> i32 {
 }
 """,
     },
+    {
+        "id": "neg13_raw_pointee_bare_read_requires_unsafe",
+        "category": "raw_pointee_unsafe_contract_0201",
+        "description": "Bare-name raw pointee read (*p -> p) outside unsafe rejected with E0625",
+        "expected_code": "E0625",
+        "needs_tki": False,
+        "source": """\
+fn read_raw(*p: i32) -> i32 {
+    return p
+}
+
+fn main() -> i32 {
+    return 0
+}
+""",
+    },
+    {
+        "id": "neg14_raw_pointee_write_and_compound_assign_requires_unsafe",
+        "category": "raw_pointee_unsafe_contract_0201",
+        "description": "Bare-name raw pointee assignment (p = 1) outside unsafe rejected with E0625",
+        "expected_code": "E0625",
+        "needs_tki": False,
+        "source": """\
+fn write_raw(*p#: i32) {
+    p = 1
+}
+
+fn main() -> i32 {
+    return 0
+}
+""",
+    },
+    {
+        "id": "neg15_raw_pointee_access_path_and_call_requires_unsafe",
+        "category": "raw_pointee_unsafe_contract_0201",
+        "description": "Member/index/method/call access through bare raw pointer outside unsafe rejected with E0625",
+        "expected_code": "E0625",
+        "needs_tki": False,
+        "source": """\
+shape Boxed(pub v: i32)
+
+fn read_member(*b: Boxed) -> i32 {
+    return b.v
+}
+
+fn main() -> i32 {
+    return 0
+}
+""",
+    },
+    {
+        "id": "neg16_sourceless_tki_generic_raw_pointee_requires_unsafe",
+        "category": "raw_pointee_unsafe_contract_0201",
+        "description": "Sourceless Format 7 .tki generic body reading raw pointee without unsafe rejected with E0625 on instantiation",
+        "expected_code": "E0625",
+        "needs_tki": True,
+        "source": """\
+import raw_hats_020_provider::{unsafe_bad_generic_raw_peel}
+
+fn invoke(*p: i32) -> i32 {
+    unsafe {
+        return unsafe_bad_generic_raw_peel(*p)
+    }
+}
+
+fn main() -> i32 {
+    return 0
+}
+""",
+    },
 ]
+
+POS4_0201_SOURCE = """\
+shape RawBox0201(pub v#: i32)
+
+impl RawBox0201 {
+    pub fn bump(self#, delta: i32) -> i32 {
+        self.v += delta
+        return self.v
+    }
+}
+
+fn forward_handles(*#p: i32, *b: i32, ?#q: i32, **pp: i32) -> *i32 {
+    *#p = *b
+    if ?q != null {
+        ?#q = null
+    }
+    guard ?q {
+        auto *unwrapped_q = (?q).unwrap()
+        return *unwrapped_q
+    } else {
+        auto **copy_pp = **pp
+        if **copy_pp == **pp && *p == *b && ?q == null {
+            auto addr = *p as Addr
+            if addr != 0:Addr {
+                return *p
+            }
+        }
+        return *b
+    }
+}
+
+fn main() -> i32 {
+    auto a = 10:i32
+    auto b = 25:i32
+    auto *#pa# = *#a
+    auto *pb = *b
+    auto ?#qa = *a : ?i32
+    auto **ppa = *#*#pa
+
+    auto *selected = forward_handles(*#pa, *pb, ?#qa, **ppa)
+    auto selected_val = unsafe (selected)
+    if selected_val != 25 {
+        return 1
+    }
+
+    unsafe {
+        pa = 30
+        pa += 12
+    }
+    if b != 42 {
+        return 2
+    }
+
+    auto *mid = unsafe (ppa)
+    auto mid_val = unsafe (mid)
+    if mid_val != 42 {
+        return 3
+    }
+
+    auto box_val = RawBox0201(v = 100)
+    auto *#pbox# = *#box_val
+    auto bumped = unsafe (pbox#.bump(23))
+    auto pbox_v = unsafe (pbox.v)
+    if bumped != 123 || pbox_v != 123 {
+        return 4
+    }
+
+    auto x = 5:i32
+    auto &rx = &x
+    auto ~sh = new i32(7)
+    auto ^uh = new i32(9)
+    if rx + sh + uh != 21 {
+        return 5
+    }
+    return 0
+}
+"""
 
 POSITIVE_020_CASES = [
     {
@@ -600,6 +760,11 @@ POSITIVE_020_CASES = [
         "id": "pos2_nonzero_fact_narrowing_and_rebind",
         "description": "1-layer guard/if-null narrowing, unwrap return narrowing, and ?#next member rebind chains",
         "source": POS2_020_SOURCE,
+    },
+    {
+        "id": "pos4_raw_pointee_unsafe_and_safe_handle_matrix",
+        "description": "0.20.1 safe handle-identity operations without unsafe vs unsafe raw pointee read/write/method/multi-layer peel",
+        "source": POS4_0201_SOURCE,
     },
 ]
 
@@ -634,7 +799,7 @@ def main():
     p = argparse.ArgumentParser(description="Toka 0.20 installed candidate verification")
     p.add_argument("--sdk", type=pathlib.Path, required=True, help="Installed SDK root directory")
     p.add_argument("--revision", required=True, help="Expected candidate commit SHA")
-    p.add_argument("--version", default="v0.20.0", help="Expected version label")
+    p.add_argument("--version", default="v0.20.1", help="Expected version label")
     p.add_argument("--target", default="", help="Target platform label")
     p.add_argument("--output", type=pathlib.Path, default=None, help="Output directory for results")
     a = p.parse_args()
@@ -1104,7 +1269,16 @@ def main():
         else:
             raise RuntimeError(f"Missing mandatory test_compositional_convergence.py at {comp_conv_script}")
 
-    conv_cmd = [sys.executable, str(comp_conv_script), "--build-dir", str(sdk), "--suite-dir", str(fixtures_dir)]
+    conv_cmd = [
+        sys.executable,
+        str(comp_conv_script),
+        "--build-dir",
+        str(sdk),
+        "--suite-dir",
+        str(fixtures_dir),
+        "--output-receipt",
+        str(out / "compositional-convergence-receipt.json"),
+    ]
     r_conv = run_cmd(
         "pos-compositional-convergence",
         conv_cmd,

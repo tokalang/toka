@@ -58,6 +58,8 @@ AccessPath Sema::makeAccessPath(Expr *E) {
     return makeAccessPath(postfix->LHS.get());
   if (auto *address = dynamic_cast<AddressOfExpr *>(E))
     return makeAccessPath(address->Expression.get());
+  if (auto *unsafeExpr = dynamic_cast<UnsafeExpr *>(E))
+    return makeAccessPath(unsafeExpr->Expression.get());
 
   if (auto *member = dynamic_cast<MemberExpr *>(E)) {
     AccessPath path = makeAccessPath(member->Object.get());

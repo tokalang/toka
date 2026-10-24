@@ -1,6 +1,6 @@
 fn consume_raw(cede *value: i32) -> i32 {
     auto *owned = cede *value
-    return owned
+    unsafe { return owned }
 }
 
 fn main() -> i32 {

@@ -10,8 +10,10 @@
 fn copy_payload(*out#: u64) {
     auto other# = 7:u64
     auto *otherp# = &other as *u64#
-    auto *p# = &out as *u64#
-    p = otherp
+    unsafe {
+        auto *p# = &out as *u64#
+        p = otherp
+    }
 }
 
 pub fn main() -> i32 {
@@ -28,7 +30,9 @@ pub fn main() -> i32 {
     auto *#pa# = &a as *u64#
     auto *#pb# = &b as *u64#
     *pa = *pb
-    pa = 99:u64
+    unsafe {
+        pa = 99:u64
+    }
     if a != 1:u64 { return 2 }
     if b != 99:u64 { return 3 }
 

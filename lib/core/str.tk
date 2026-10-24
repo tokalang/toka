@@ -32,7 +32,9 @@ extern fn __toka_bytes_raw_ptr(b: bytes) -> *byte
 
 impl str {
     pub fn from_raw_parts(*buf: char, len: usize) -> str <- buf {
-        return str(&buf = (buf as *[char]) as &[char], len = len)
+        unsafe {
+            return str(&buf = (*buf as *[char]) as &[char], len = len)
+        }
     }
 
     pub fn clone(self) -> str <- self {

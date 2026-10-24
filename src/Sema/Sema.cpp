@@ -6438,6 +6438,14 @@ void Sema::checkFunction(FunctionDecl *Fn) {
 
   m_NativeSyncOwnerReturns.erase(Fn);
   ActiveNodeRAII Active(Fn);
+  const bool savedFunctionInUnsafeContext = m_InUnsafeContext;
+  if (!Fn->IsClosureInvoke)
+    m_InUnsafeContext = false;
+  struct RestoreFunctionUnsafeContext {
+    bool &Flag;
+    bool Saved;
+    ~RestoreFunctionUnsafeContext() { Flag = Saved; }
+  } restoreFunctionUnsafeContext{m_InUnsafeContext, savedFunctionInUnsafeContext};
 
   std::string savedRet =
       CurrentFunctionReturnType; // [FIX] Save state for recursion
@@ -9336,7 +9344,27 @@ Sema::GenericFunctionInstantiationResult Sema::instantiateGenericFunction(
     m_Stage0GenericBodyQualificationPromotionScopes.push_back(
         promoteStage0BodyCalls);
   }
-  checkFunction(Instance);
+  {
+    bool oldInUnsafe = m_InUnsafeContext;
+    bool oldInLHS = m_InLHS;
+    bool oldIsAssignmentTarget = m_IsAssignmentTarget;
+    bool oldIsMemberBase = m_IsMemberBase;
+    bool oldInIntermediate = m_InIntermediatePath;
+    bool oldDisableCollapse = m_DisableSoulCollapse;
+    m_InUnsafeContext = false;
+    m_InLHS = false;
+    m_IsAssignmentTarget = false;
+    m_IsMemberBase = false;
+    m_InIntermediatePath = false;
+    m_DisableSoulCollapse = false;
+    checkFunction(Instance);
+    m_DisableSoulCollapse = oldDisableCollapse;
+    m_InIntermediatePath = oldInIntermediate;
+    m_IsMemberBase = oldIsMemberBase;
+    m_IsAssignmentTarget = oldIsAssignmentTarget;
+    m_InLHS = oldInLHS;
+    m_InUnsafeContext = oldInUnsafe;
+  }
   if (prepareStage0BodyCalls) {
     m_Stage0GenericBodyQualificationPromotionScopes.pop_back();
     m_Stage0GenericBodyQualificationPermitDepths.pop_back();

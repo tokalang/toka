@@ -1,7 +1,9 @@
 shape AuditBox(val: i32)
 
 fn payload_only(*s: string) -> i32 {
-    return s.len() as i32
+    unsafe {
+        return s.len() as i32
+    }
 }
 
 fn handle_used(*s: string) -> bool {

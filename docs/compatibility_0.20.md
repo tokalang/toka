@@ -1,9 +1,10 @@
-# Toka 0.20.0 Compatibility Notes, Migration Guide & SDK Acceptance Checklist
+# Toka 0.20.0 / 0.20.1 Compatibility Notes, Migration Guide & SDK Acceptance Checklist
 
 ## 1. Release Positioning & Breaking Contract Overview
 
 - **Breaking Raw Pointer Hat Contract Migration (`0.19` -> `0.20` Language Epoch)**:
-  - Toka `0.20.0` introduces `TOKA_DEFAULT_LANGUAGE_EPOCH = "0.20"` (`include/toka/InterfaceVersion.h`), bumps `TOKA_INTERFACE_FORMAT_VERSION` from `"6"` to `"7"`, and updates `TOKA_COMPILER_INTERFACE_VERSION` to `"0.20.0-1"`, while retaining `TOKA_DEFAULT_ENCAP_EPOCH = "0.19"`.
+  - Toka `0.20.0` / `0.20.1` introduces `TOKA_DEFAULT_LANGUAGE_EPOCH = "0.20"` (`include/toka/InterfaceVersion.h`), bumps `TOKA_INTERFACE_FORMAT_VERSION` from `"6"` to `"7"`, and updates `TOKA_COMPILER_INTERFACE_VERSION` to `"0.20.1-1"`, while retaining `TOKA_DEFAULT_ENCAP_EPOCH = "0.19"`.
+  - In `0.20.1`, any expression or statement that **peels a raw pointer layer (`*` or narrowed `?`) to read, write, project, index, or call its pointee** (`p`, `p = v`, `p += 1`, `p.field`, `p[i]`, `p.0`, `p.method()`, `fp()`, `p.await`, `p.wait`, or multi-layer peel `**pp -> pp`) requires an explicit `unsafe { ... }` block or `unsafe <expr>`, and is otherwise rejected with `error[E0625]`. Operations that preserve the raw pointer handle identity (`*p`, `?q`, `**pp`, `*#p = *#b`, `?#q = null`, `guard ?q`, `(?q).is_null()`, `*p == *q`, `*p as Addr`) remain safe without `unsafe`.
   - The legacy two-token nullable raw pointer spelling `nul *` (`nul *T`, `nul *p`) is retired and rejected with `error[E0488]`.
   - Single-character `?` is now the canonical nullable raw pointer hat (`?T`, `?p`), symmetric with non-null `*` (`*T`, `*p`).
   - Pure raw pointer multi-layer hat chains (`**T`, `*?T`, `?*T`, `??T`, `***T`..`???T`) with per-layer `#`/`$` rebinding permissions (`?#T`, `*#?T`, `?#?p`, `?*#p`) are supported across local bindings, parameters, returns, `shape` fields, member access (`self.?next`, `self.?#next`, `self.??pp`), and constructor punning (`Node(?next = null)`).
@@ -84,6 +85,7 @@ In `0.20.0`, raw pointer semantics strictly separate three dimensions:
 
 | Rule / Boundary | Surface Example | Outcome & Diagnostic |
 | :--- | :--- | :--- |
+| **Raw Pointee Access Without `unsafe` (`0.20.1`)** | `return p`, `p = 1`, `p.val`, `p[i]`, `p.m()` on `*T` / narrowed `?T` outside `unsafe` | Rejected with `error[E0625]` (wrap pointee access in `unsafe { ... }` / `unsafe <expr>`, or keep handle hats `*p` / `?p` when selecting the pointer handle itself) |
 | **No `null -> *R` in `unsafe` (`R-2`)** | `unsafe { auto *p = null:*i32 }` | Rejected with `error[E0483]` (`unsafe` does not exempt non-null `*R` from `null`) |
 | **Outer Value Widening Allowed** | `**T -> ?*T`, `*?T -> ??T` | Permitted when inner pointee layers and permissions match |
 | **Inner Pointee Nullability Invariance (`R-3`)** | `**T -> *?T`, `?*T -> ??T` | Rejected with `error[E04606]` / `error[E0409]` (prevents writing `null` into a non-null inner `*T` slot) |
@@ -95,15 +97,45 @@ In `0.20.0`, raw pointer semantics strictly separate three dimensions:
 | **Postfix Nullable Assertion** | `p?` / `p??` / `self.?next?` | Rejected with `error[E0487]` |
 | **Safe Nullable Type Suffix** | `x: i32?` | Rejected with `error[E0484]` |
 
+### 2.4 Migrating Raw Pointer Pointee Access in `0.20.1` (`E0625`)
+
+In `0.20.1`, Toka closes the raw pointer safety boundary between **handle-identity preservation** (safe) and **pointee dereference/projection** (`unsafe` required):
+
+```toka
+// 1. Reading, writing, or projecting through a raw pointee requires `unsafe`:
+fn read_and_bump(*p#: i32) -> i32 {
+    // BEFORE (rejected in 0.20.1 with error[E0625]):
+    // p += 1
+    // return p
+
+    // AFTER (0.20.1):
+    unsafe {
+        p += 1
+        return p
+    }
+}
+
+// 2. Passing, copying, comparing, or rebinding the raw pointer handle itself
+//    by keeping its hat (`*p`, `?q`, `**pp`, `*#p = *#b`) remains safe without `unsafe`:
+fn rebind_and_forward(*#slot: i32, *next: i32, ?maybe: i32) -> *i32 {
+    *#slot = *next
+    guard ?maybe {
+        return ?maybe
+    } else {
+        return *slot
+    }
+}
+```
+
 ---
 
 ## 3. `.tki` Format 7, Dual-Epoch Replay Hash, Sidecars & Cache Isolation
 
 ### 3.1 `.tki` & Sidecar Metadata Contract
 
-| Artifact / Field | `0.19.0` Value | `0.20.0` Value | Enforcement |
+| Artifact / Field | `0.19.0` Value | `0.20.0` / `0.20.1` Value | Enforcement |
 | :--- | :--- | :--- | :--- |
-| `compiler_version` | `0.9.9-38` | `0.20.0-1` | Toolchain interface identity (`TOKA_COMPILER_INTERFACE_VERSION`) |
+| `compiler_version` | `0.9.9-38` | `0.20.1-1` | Toolchain interface identity (`TOKA_COMPILER_INTERFACE_VERSION`) |
 | `format_version` | `6` | `7` | Hard rejection (`error[E0901]: Interface format version mismatch (expected 7, got 6)`) |
 | `language_epoch` | *(absent)* | `0.20` | Hard rejection on missing or mismatched epoch (`error[E0901]: Interface language_epoch mismatch`) |
 | `encap_epoch` | `0.19` | `0.19` | Hard rejection on missing or mismatched epoch (`error[E0901]: Interface encap_epoch mismatch`) |

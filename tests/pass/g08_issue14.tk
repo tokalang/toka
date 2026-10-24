@@ -47,14 +47,18 @@ pub fn main() -> i32 {
     auto a# = 42
     auto *raw_ptr = *a
     println("local addr: {}", *raw_ptr as OAddr)
-    println("local val: {}", raw_ptr)
-    assert(raw_ptr == 42, "local val mismatch")
+    unsafe {
+        println("local val: {}", raw_ptr)
+        assert(raw_ptr == 42, "local val mismatch")
+    }
 
     // 2. Struct member raw pointer test
     auto pt = RawPoint(*x = *a)
     println("struct member addr: {}", pt.*x as OAddr)
-    println("struct member val: {}", pt.x)
-    assert(pt.x == 42, "struct member val mismatch")
+    unsafe {
+        println("struct member val: {}", pt.x)
+        assert(pt.x == 42, "struct member val mismatch")
+    }
 
     // 3. Struct member Unique pointer test
     auto ^unique_pt = new Point(x = a)
