@@ -377,13 +377,7 @@ def main():
     print(f"\nAll {total_probes} Compositional Convergence probes passed successfully (including {pos_count}/{pos_count} native execution rc=0 & portable ext_provider).")
 
     # Output receipt
-    output_path = None
-    if args.output_receipt:
-        output_path = pathlib.Path(args.output_receipt).resolve()
-    else:
-        default_review_dir = pathlib.Path("/Users/zhyi/LumiCoreHome2/artifacts/reviews/0.17-stage2-compositional-convergence")
-        if default_review_dir.exists():
-            output_path = default_review_dir / "execution_receipt.json"
+    output_path = pathlib.Path(args.output_receipt).resolve() if args.output_receipt else None
 
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
