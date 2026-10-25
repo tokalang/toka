@@ -43,7 +43,9 @@ fn raw_store_move_prefix<T>(?source: [T], *destination#: [T], length: usize) {
     } else {
         auto index# = 0:usize
         loop index < length {
-            destination[index] = unsafe raw_take source[index]
+            unsafe {
+                destination[index] = unsafe raw_take source[index]
+            }
             index += 1:usize
         }
     }

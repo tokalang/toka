@@ -71,7 +71,7 @@ def run_cmd(argv, cwd: Path, env=None):
 def extract_diagnostics(stderr_text: str):
     clean = re.sub(r"\x1b\[[0-9;]*m", "", stderr_text)
     pattern = re.compile(
-        r"(error|warning)\[(E\d+|W\d+)\]: ([^\n]+)\n\s*-->\s*([^\n:]*):(\d+):(\d+)"
+        r"(error|warning)\[(E\d+|W\d+)\]: ([^\n]+)\n\s*-->\s*((?:[A-Za-z]:[\\/])?[^\n:]*):(\d+):(\d+)"
     )
     diags = []
     for m in pattern.finditer(clean):
