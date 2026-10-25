@@ -101,7 +101,7 @@ def run_source_probe(
     probe_dir = work_root / "probes" / rel_dir
     probe_dir.mkdir(parents=True, exist_ok=True)
     src_path = probe_dir / filename
-    src_path.write_text(source, encoding="utf-8")
+    src_path.write_text(source, encoding="utf-8", newline="\n")
 
     stem = src_path.stem
     obj_path = probe_dir / f"{stem}.o"
@@ -1104,7 +1104,7 @@ fn main() -> i32 {
         src_path = ir_dir / fname
         ll_path = ir_dir / f"{Path(fname).stem}.ll"
         bin_path = ir_dir / f"{Path(fname).stem}{exe_suffix}"
-        src_path.write_text(src, encoding="utf-8")
+        src_path.write_text(src, encoding="utf-8", newline="\n")
         emit_res = run_cmd([tokac, "--emit-llvm", src_path, "-o", ll_path], ir_dir)
         build_res = run_cmd([tokac, src_path, "-o", bin_path], ir_dir)
         run_res = run_cmd([bin_path], ir_dir) if build_res["exit_code"] == 0 else None
@@ -1150,7 +1150,7 @@ fn main() -> i32 {
         assert producer_tki.exists(), f"Missing {producer_tki}"
 
         c_path = case_dir / consumer_name
-        c_path.write_text(consumer_src, encoding="utf-8")
+        c_path.write_text(consumer_src, encoding="utf-8", newline="\n")
         c_stem = c_path.stem
         c_obj = case_dir / f"{c_stem}.o"
         c_ll = case_dir / f"{c_stem}.ll"
@@ -1260,6 +1260,7 @@ pub fn unsafe_read_via_unsafe(*p: i32) -> i32 {
 }
 """,
         encoding="utf-8",
+        newline="\n",
     )
     run_cmd([tokac, "-c", "--emit-interface", tki1_prod_tk, "-o", tki1_dir / "raw_api.o"], tki1_dir)
     tki1_prod_tk.unlink()
@@ -1350,6 +1351,7 @@ fn main() -> i32 {
 }
 """,
         encoding="utf-8",
+        newline="\n",
     )
     run_cmd([tokac, "-c", "--emit-interface", tki2_prod_tk, "-o", tki2_dir / "unsafe_api.o"], tki2_dir)
     tki2_prod_tk.unlink()
@@ -1428,6 +1430,7 @@ pub fn make_safe_reader() -> fn(i32) -> i32 {
 }
 """,
         encoding="utf-8",
+        newline="\n",
     )
     run_cmd([tokac, "-c", "--emit-interface", tki3_prod_tk, "-o", tki3_dir / "replay_ok.o"], tki3_dir)
     tki3_prod_tk.unlink()
@@ -1477,6 +1480,7 @@ pub fn trigger_in_producer() -> i32 {
 }
 """,
         encoding="utf-8",
+        newline="\n",
     )
     res_refuse = run_cmd([tokac, "-c", "--emit-interface", "legacy_leak.tk", "-o", "legacy_leak.o"], refuse_dir)
     (refuse_dir / "legacy_leak.tk").unlink()
@@ -1495,6 +1499,7 @@ pub fn trigger_in_producer() -> i32 {
 }
 """,
         encoding="utf-8",
+        newline="\n",
     )
     run_cmd([tokac, "-c", "--emit-interface", "legacy_leak.tk", "-o", "legacy_leak.o"], seed_dir)
     (seed_dir / "legacy_leak.tk").unlink()
@@ -1530,7 +1535,7 @@ pub fn trigger_in_producer() -> i32
     tki4a1_dir = tki4_dir / "TKI4a_01_v0200_identity_rejected_e0901"
     tki4a1_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(seed_dir / "legacy_leak.o", tki4a1_dir / "legacy_leak.o")
-    (tki4a1_dir / "legacy_leak.tki").write_text(v0200_legacy_leak_tki, encoding="utf-8")
+    (tki4a1_dir / "legacy_leak.tki").write_text(v0200_legacy_leak_tki, encoding="utf-8", newline="\n")
 
     tki_receipts.append(
         run_consumer_suite(
@@ -1561,7 +1566,7 @@ fn main() -> i32 {
         "// @meta compiler_version: 0.20.0-1",
         "// @meta compiler_version: any",
     )
-    (tki4a2_dir / "legacy_leak.tki").write_text(tki4a2_text, encoding="utf-8")
+    (tki4a2_dir / "legacy_leak.tki").write_text(tki4a2_text, encoding="utf-8", newline="\n")
 
     tki_receipts.append(
         run_consumer_suite(
@@ -1593,7 +1598,7 @@ fn main() -> i32 {
         .replace("// @meta compiler_version: 0.20.0-1", "// @meta compiler_version: 0.20.1-1")
         .replace("// @meta local_body_policy: checked-local-v1", "// @meta local_body_policy: checked-local-v1-0201")
     )
-    (tki4b1_dir / "legacy_leak.tki").write_text(tki4b1_text, encoding="utf-8")
+    (tki4b1_dir / "legacy_leak.tki").write_text(tki4b1_text, encoding="utf-8", newline="\n")
 
     tki_receipts.append(
         run_consumer_suite(
@@ -1651,7 +1656,7 @@ pub fn make_reader() -> fn(i32)->i32 {{
 }}
 
 """
-    (tki4b2_dir / "legacy_local.tki").write_text(v0200_legacy_local_tki, encoding="utf-8")
+    (tki4b2_dir / "legacy_local.tki").write_text(v0200_legacy_local_tki, encoding="utf-8", newline="\n")
 
     tki_receipts.append(
         run_consumer_suite(
@@ -1716,7 +1721,7 @@ def main():
     if args.output_receipt:
         out_path = Path(args.output_receipt).resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8", newline="\n")
 
     summary = payload["summary"]
     print(
